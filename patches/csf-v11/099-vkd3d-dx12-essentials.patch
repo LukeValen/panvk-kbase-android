@@ -2,7 +2,7 @@ diff --git a/src/panfrost/vulkan/panvk_image.c b/src/panfrost/vulkan/panvk_image
 index 288ff4579c4..ca805eefaa2 100644
 --- a/src/panfrost/vulkan/panvk_image.c
 +++ b/src/panfrost/vulkan/panvk_image.c
-@@ -421,6 +421,14 @@ panvk_should_checksum(struct panvk_image *image,
+@@ -421,6 +421,14 @@ @@ panvk_should_checksum(struct panvk_image *image,
         !wsi_info)
        return false;
  
@@ -21,7 +21,7 @@ diff --git a/src/panfrost/vulkan/panvk_cmd_desc_state.h b/src/panfrost/vulkan/pa
 index 923d881ef40..d92a188be33 100644
 --- a/src/panfrost/vulkan/panvk_cmd_desc_state.h
 +++ b/src/panfrost/vulkan/panvk_cmd_desc_state.h
-@@ -64,6 +64,11 @@ struct panvk_descriptor_state {
+@@ -64,6 +64,11 @@ @@ struct panvk_descriptor_state {
  
     uint32_t dyn_buf_offsets[MAX_SETS][MAX_DYNAMIC_BUFFERS];
     uint32_t dyn_ssbos[MAX_SETS];
@@ -37,7 +37,7 @@ diff --git a/src/panfrost/vulkan/csf/panvk_cmd_buffer.h b/src/panfrost/vulkan/cs
 index 362058ccc48..ca1ef8551da 100644
 --- a/src/panfrost/vulkan/csf/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/csf/panvk_cmd_buffer.h
-@@ -610,6 +610,7 @@ struct panvk_cmd_buffer {
+@@ -610,6 +610,7 @@ @@ struct panvk_cmd_buffer {
        uint64_t tiler_work_estimate;
  
        struct panvk_cond_render_state cond_render;
@@ -49,7 +49,7 @@ diff --git a/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c b/src/panfrost/vulkan
 index 6beab5f62c7..d1deca14adc 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c
-@@ -40,6 +40,8 @@ cmd_desc_state_bind_sets(struct panvk_descriptor_state *desc_state,
+@@ -40,6 +40,8 @@ @@ cmd_desc_state_bind_sets(struct panvk_descriptor_state *desc_state,
           desc_state->push_sets[set_idx]->descs.dev = 0;
  
        desc_state->sets[set_idx] = set;
@@ -58,7 +58,7 @@ index 6beab5f62c7..d1deca14adc 100644
  
        if (set) {
           for (unsigned b = 0; b < set->layout->dyn_buf_count; b++) {
-@@ -287,9 +289,21 @@ panvk_per_arch(cmd_prepare_shader_res_table)(
+@@ -287,13 +289,25 @@ @@ panvk_per_arch(cmd_prepare_shader_res_table)(
  
           pan_pack(&res_table[i + 1], RESOURCE, cfg) {
              if (desc_info->used_set_mask & BITFIELD_BIT(i)) {
@@ -91,7 +91,7 @@ diff --git a/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/c
 index 8c905bdf464..fa270324f3d 100644
 --- a/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
-@@ -20,6 +20,8 @@
+@@ -20,6 +20,8 @@ @@
  #include "panvk_cmd_alloc.h"
  #include "panvk_cmd_buffer.h"
  #include "panvk_cmd_desc_state.h"
@@ -100,7 +100,7 @@ index 8c905bdf464..fa270324f3d 100644
 +#include "vk_pipeline_layout.h"
  #include "panvk_gpu_prerast.h"
  #include "panvk_cmd_frame_shaders.h"
-@@ -7624,3 +7626,170 @@ panvk_per_arch(CmdDrawIndirectByteCountEXT)(
+@@ -7624,3 +7626,170 @@ @@ panvk_per_arch(CmdDrawIndirectByteCountEXT)(
  
     panvk_cmd_draw(cmdbuf, info);
  }
@@ -275,7 +275,7 @@ diff --git a/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c b/src/panfrost
 index ecd1b3cf498..859ec86ffb6 100644
 --- a/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c
 +++ b/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c
-@@ -29,6 +29,7 @@
+@@ -29,6 +29,7 @@ @@
  #include "panvk_device.h"
  #include "panvk_entrypoints.h"
  #include "panvk_image.h"
@@ -283,7 +283,7 @@ index ecd1b3cf498..859ec86ffb6 100644
  #include "panvk_macros.h"
  #include "panvk_sampler.h"
  
-@@ -413,3 +414,111 @@ panvk_per_arch(GetDescriptorSetLayoutSupport)(
+@@ -413,3 +414,116 @@ @@ panvk_per_arch(GetDescriptorSetLayoutSupport)(
           (PANVK_MAX_DESCS_PER_SET - non_variable_count) / variable_stride;
     }
  }
@@ -404,7 +404,7 @@ diff --git a/src/panfrost/vulkan/panvk_vX_physical_device.c b/src/panfrost/vulka
 index 90ed3daa229..4d9ecbb5a0e 100644
 --- a/src/panfrost/vulkan/panvk_vX_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_physical_device.c
-@@ -159,7 +159,9 @@ panvk_per_arch(get_physical_device_extensions)(
+@@ -159,7 +159,9 @@ @@ panvk_per_arch(get_physical_device_extensions)(
  #ifdef VK_USE_PLATFORM_DISPLAY_KHR
        .EXT_display_control = true,
  #endif
@@ -414,7 +414,7 @@ index 90ed3daa229..4d9ecbb5a0e 100644
        .EXT_dynamic_rendering_unused_attachments = true,
        .EXT_extended_dynamic_state = true,
        .EXT_extended_dynamic_state2 = true,
-@@ -504,6 +506,16 @@ panvk_per_arch(get_physical_device_features)(
+@@ -504,6 +506,16 @@ @@ panvk_per_arch(get_physical_device_features)(
        /* VK_KHR_maintenance9 */
        .maintenance9 = true,
  
@@ -431,7 +431,7 @@ index 90ed3daa229..4d9ecbb5a0e 100644
        /* VK_KHR_internally_synchronized_queues */
        .internallySynchronizedQueues = true,
  
-@@ -644,7 +656,7 @@ panvk_per_arch(get_physical_device_features)(
+@@ -644,7 +656,7 @@ @@ panvk_per_arch(get_physical_device_features)(
  
        /* VK_KHR_robustness2 */
        .robustBufferAccess2 = PAN_ARCH >= 11,
@@ -440,7 +440,7 @@ index 90ed3daa229..4d9ecbb5a0e 100644
        .nullDescriptor = PAN_ARCH >= 10,
  
        /* VK_EXT_shader_tile_image */
-@@ -1349,6 +1361,51 @@ panvk_per_arch(get_physical_device_properties)(
+@@ -1349,6 +1361,51 @@ @@ panvk_per_arch(get_physical_device_properties)(
  
        /* VK_KHR_copy_memory_indirect */
        .supportedQueues = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT,
