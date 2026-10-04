@@ -1,0 +1,46 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 108] panvk: log CS fault registers on kbase fatal events
+
+Purpose: the kbase group notification sideband is not the GPU VA. Dump
+CS_FAULT and CS_FAULT_INFO from every subqueue immediately when a fatal
+event arrives, and include them in timeout snapshots, so Eden faults can be
+correlated with the real faulting GPU address.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+index fbc82aa..61a22d1 100644
+--- a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+@@ -348,6 +348,9 @@ kbase_log_subqueue_state(struct panvk_gpu_queue *queue, uint32_t subqueue,
+       *(volatile uint64_t *)(output_page + CS_USER_IO_OUTPUT_CS_EXTRACT);
+    uint32_t active =
+       *(volatile uint32_t *)(output_page + CS_USER_IO_OUTPUT_CS_ACTIVE);
++   uint32_t cs_fault = *(volatile uint32_t *)(output_page + 0x80);
++   uint32_t cs_fault_lo = *(volatile uint32_t *)(output_page + 0x88);
++   uint32_t cs_fault_hi = *(volatile uint32_t *)(output_page + 0x8c);
+ 
+    kbase_cache_invalidate_range((const void *)cell, kbase_seqno_stride());
+ 
+@@ -361,6 +364,9 @@ kbase_log_subqueue_state(struct panvk_gpu_queue *queue, uint32_t subqueue,
+              subq->kbase.emitted_jobs);
+    mesa_loge("kbase: %s subqueue %u stream progress 0x%x", reason,
+              subqueue, *stream_progress);
++   mesa_loge("kbase: %s subqueue %u CS_FAULT=0x%08x "
++             "CS_FAULT_INFO=0x%08x%08x",
++             reason, subqueue, cs_fault, cs_fault_hi, cs_fault_lo);
+ 
+    mesa_loge("kbase: %s subqueue %u last job: ring offset %u, entry "
+              "%u/%u bytes, stream 0x%" PRIx64 "/%u, flush %u",
+@@ -948,6 +954,11 @@ kbase_subqueue_wait_seqno(struct panvk_gpu_queue *queue, uint32_t subqueue,
+       if (cqs_ret < 0) {
+          int error_type = kbase_kmod_csf_wait_event(dev->kmod.dev, remaining);
+ 
++         if (error_type > 0) {
++            for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++)
++               kbase_log_subqueue_state(queue, i, "fault event");
++         }
++
+          if (dev->debug.decode_ctx && insert > extract && error_type) {
+             // pandecode_user_msg(dev->debug.decode_ctx,
+             //    "\nSubqueue %d Ringbuffer Trampoline [job %lu, gpu_va: %lx, cpu=%p, Size %u bytes, to %lx]:\n",
