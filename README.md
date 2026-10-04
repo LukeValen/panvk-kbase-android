@@ -56,7 +56,7 @@ Mesa that produces an open Mesa PanVK driver talking directly to Android's
 proprietary `mali_kbase` kernel interface (`/dev/mali0`). The original project
 supports broader consumers and use cases. This fork keeps that source lineage,
 but its **current development target is Eden Switch emulation**.
-## Apps
+## Upstream apps (not current fork target)
 
 | | App | What it is | Download |
 |---|---|---|---|
