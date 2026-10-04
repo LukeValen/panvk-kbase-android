@@ -1,28 +1,61 @@
-# PanVK Kbase Android Driver
+# PanVK Kbase Android — Eden Switch Emulator Fork
 
-<p align="center">
-  <img src="apps/panvk-launcher/tests/results/samevaresults/cube/x86_64-d3d11-cube-hud.png" alt="Direct3D 11 cube demo running through DXVK on PanVK (Mali-G615)" width="100%">
-</p>
+> **Current fork scope: Eden Android / Nintendo Switch emulation only.**
+>
+> This fork is currently developed as a custom Vulkan driver for the
+> **Eden Android Switch emulator** on Mali-G615/Kbase-CSF devices. It is not
+> currently maintained as a general-purpose Winlator, Termux:X11, GameHub or
+> desktop compatibility fork.
 
-Standalone patch/build layer around pinned upstream Mesa that produces an
-open Mesa PanVK driver talking directly to Android's proprietary
-`mali_kbase` kernel interface (`/dev/mali0`).
+This repository is a fork of
+[`GunaCharanTeja/panvk-kbase-android`](https://github.com/GunaCharanTeja/panvk-kbase-android)
+and keeps the Mesa/PanVK and Kbase work from the upstream project. Eden-specific
+integration, Android Native Buffer fixes, synchronization fixes and validation
+are developed here by **LukeValen**.
 
-Repository: [`zenithblue-oss/panvk-kbase-android`](https://github.com/zenithblue-oss/panvk-kbase-android)
+## Eden compatibility
 
-Primary consumers:
+This driver currently requires a **specific experimental Eden build** with the
+Mali custom-driver loading changes used during development. That Eden build is
+**not distributed from this repository yet**.
 
-1. **Samba S3** — Android/Bionic, in-process custom Vulkan driver
-2. **Bachata S4** — ARM64 glibc Vulkan ICD inside the managed runtime
-3. **NativeCode AI** — ARM64 glibc PRoot validation/development
+Using this driver with a normal/public Eden build is not supported at this
+stage and may result in startup failures, black output, presentation problems
+or crashes.
 
-Secondary (only after primary driver is correct): Winlator /
-AdrenoTools-style loaders, GameHub / component injectors, other Android apps
-capable of loading an alternate Vulkan ICD.
+Reference target:
 
-This is NOT a Samba-specific or Winlator-specific fork. One driver
-source/patch stack, adapter packages around it.
+- Poco X6 Pro / Dimensity 8300 Ultra
+- Mali-G615 MC6, Pan arch v11, CSF
+- Android Kbase interface at `/dev/mali0`
+- Eden Android Switch emulator using the experimental Mali custom-driver path
 
+## Current Eden work
+
+Active integration work includes:
+
+- loading PanVK through Eden's custom Vulkan driver path on Mali;
+- MediaTek gralloc/mapper metadata handling;
+- Android Native Buffer DMA-BUF discovery instead of assuming `native_handle_t->data[0]`;
+- native-buffer import through `VK_ANDROID_native_buffer`;
+- Android release-fence / `SYNC_FD` handling on Kbase;
+- avoiding DRM-syncobj payload-copy logic on Kbase devices;
+- swapchain/presentation diagnostics for black-screen and crash investigation.
+
+The ANB DMA-BUF issue has been identified and fixed on the reference device.
+Presentation synchronization and crash hardening are still under active
+validation, so this fork should be treated as **experimental / development-only**.
+
+See [`docs/EDEN-INTEGRATION.md`](docs/EDEN-INTEGRATION.md) for the current
+technical status, requirements and known issues.
+
+## Upstream foundation
+
+The underlying project is a standalone patch/build layer around pinned upstream
+Mesa that produces an open Mesa PanVK driver talking directly to Android's
+proprietary `mali_kbase` kernel interface (`/dev/mali0`). The original project
+supports broader consumers and use cases. This fork keeps that source lineage,
+but its **current development target is Eden Switch emulation**.
 ## Apps
 
 | | App | What it is | Download |
