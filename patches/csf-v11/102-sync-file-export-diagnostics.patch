@@ -1,0 +1,127 @@
+From: panvk-kbase-android worker <panvk-worker@localhost>
+Subject: [PATCH csf-v11 102] panvk/kbase: trace sync_file export path
+
+Purpose: Trace kbase CPU-sync export and KCPU CQS/FENCE_SIGNAL ioctls used
+by VK_ANDROID_native_buffer release fences.
+
+Target: Mali-G615 MC6 / Poco X6 Pro / Kbase CSF v11
+Mesa base: 5a07217f034b3e50d8c7c7794f97a2df1742613b
+
+diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
+index 7465627..3d1c14e 100644
+--- a/src/panfrost/vulkan/panvk_physical_device.c
++++ b/src/panfrost/vulkan/panvk_physical_device.c
+@@ -1036,12 +1036,16 @@ kbase_cpu_sync_export_sync_file(struct vk_device *device,
+    unsigned count = 0;
+    int fd;
+ 
++   mesa_logi("[KBASE-SYNC] export_sync_file begin");
+    VkResult result =
+       kbase_cpu_sync_wait_one(device, ks, VK_SYNC_WAIT_PENDING, UINT64_MAX);
++   mesa_logi("[KBASE-SYNC] wait_pending result=%d", result);
+    if (result != VK_SUCCESS)
+       return result;
+ 
+    mtx_lock(&ks->mutex);
++   mesa_logi("[KBASE-SYNC] state=%d pending_wait=%p",
++             ks->state, (void *)(uintptr_t)ks->pending_wait);
+    if (ks->state == KBASE_CPU_SYNC_PENDING ||
+        ks->state == KBASE_CPU_SYNC_WAITING) {
+       if (ks->pending_wait == kbase_sync_file_wait_func) {
+@@ -1071,8 +1075,16 @@ kbase_cpu_sync_export_sync_file(struct vk_device *device,
+       count = 0;
+    }
+ 
++   mesa_logi("[KBASE-SYNC] exporting CQS fence count=%u", count);
++   for (unsigned i = 0; i < count && i < PANVK_KBASE_SYNC_TARGET_COUNT; i++)
++      mesa_logi("[KBASE-SYNC] target[%u] addr=%#" PRIx64 " val=%#" PRIx64,
++                i, addrs[i], vals[i]);
++
++   errno = 0;
+    fd = kbase_kmod_csf_export_cqs64_fence(dev->kmod.dev, addrs, vals,
+                                           count);
++   mesa_logi("[KBASE-SYNC] kcpu export fd=%d errno=%d (%s)",
++             fd, errno, strerror(errno));
+ 
+ out:
+    if (fd < 0) {
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index 68aed39..d360a70 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -1028,19 +1028,26 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+       },
+    };
+ 
++   mesa_logi("[KBASE-SYNC] kcpu export enter count=%u", count);
++
+    if (!kbase_dev->is_csf) {
+       errno = ENOTSUP;
++      mesa_loge("[KBASE-SYNC] kcpu export rejected: not CSF");
+       return -1;
+    }
+ 
+    if (count > ARRAY_SIZE(waits)) {
+       errno = EINVAL;
++      mesa_loge("[KBASE-SYNC] kcpu export rejected: count=%u max=%zu",
++                count, ARRAY_SIZE(waits));
+       return -1;
+    }
+ 
+    for (unsigned i = 0; i < count; i++) {
+       if (addrs[i] & 15) {
+          errno = EINVAL;
++         mesa_loge("[KBASE-SYNC] unaligned CQS addr[%u]=%#" PRIx64,
++                   i, addrs[i]);
+          return -1;
+       }
+       waits[i] = (struct base_cqs_wait_operation_info){
+@@ -1054,12 +1061,18 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+    simple_mtx_lock(&kbase_dev->kcpu_export.lock);
+    if (!kbase_dev->kcpu_export.valid) {
+       struct kbase_ioctl_kcpu_queue_new create = {0};
++      errno = 0;
+       if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_CREATE, &create)) {
++         int err = errno;
++         mesa_loge("[KBASE-SYNC] KCPU_QUEUE_CREATE failed errno=%d (%s)",
++                   err, strerror(err));
+          simple_mtx_unlock(&kbase_dev->kcpu_export.lock);
++         errno = err;
+          return -1;
+       }
+       kbase_dev->kcpu_export.id = create.id;
+       kbase_dev->kcpu_export.valid = true;
++      mesa_logi("[KBASE-SYNC] KCPU_QUEUE_CREATE id=%u", create.id);
+    }
+ 
+    for (unsigned i = count ? 0 : 1; i < 2; i++) {
+@@ -1068,15 +1081,28 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+          .nr_commands = 1,
+          .id = kbase_dev->kcpu_export.id,
+       };
++      errno = 0;
++      mesa_logi("[KBASE-SYNC] KCPU_QUEUE_ENQUEUE slot=%u type=%u id=%u",
++                i, commands[i].type, kbase_dev->kcpu_export.id);
+       if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
++         int err = errno;
++         mesa_loge("[KBASE-SYNC] KCPU_QUEUE_ENQUEUE failed slot=%u type=%u errno=%d (%s)",
++                   i, commands[i].type, err, strerror(err));
+          simple_mtx_unlock(&kbase_dev->kcpu_export.lock);
++         errno = err;
+          return -1;
+       }
++      mesa_logi("[KBASE-SYNC] KCPU_QUEUE_ENQUEUE ok slot=%u fence_fd=%d",
++                i, fence.basep.fd);
+    }
+    simple_mtx_unlock(&kbase_dev->kcpu_export.lock);
+ 
+-   if (fence.basep.fd < 0)
++   if (fence.basep.fd < 0) {
+       errno = ENOENT;
++      mesa_loge("[KBASE-SYNC] fence signal enqueued but no fd returned");
++   } else {
++      mesa_logi("[KBASE-SYNC] fence export success fd=%d", fence.basep.fd);
++   }
+    return fence.basep.fd;
+ }
+ 
