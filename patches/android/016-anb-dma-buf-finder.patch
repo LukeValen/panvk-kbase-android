@@ -1,0 +1,77 @@
+From: panvk-kbase-android worker <panvk-worker@localhost>
+Subject: [PATCH android 016] vulkan/android: discover dma-buf fd for native buffers
+
+Purpose: Do not assume VkNativeBufferANDROID native_handle_t->data[0] is
+the dma-buf. MediaTek gralloc handles may place gralloc_extra/fence fds
+before the actual buffer fd. Probe every native handle fd with
+GetMemoryFdPropertiesKHR and select the first valid DMA_BUF fd.
+
+This fixes the Android Native Buffer import path used by Eden, which is
+separate from the AHardwareBuffer path fixed by android/008.
+
+Observed failure before this patch:
+  GetMemoryFdPropertiesKHR failed
+  vkCreateImage w/ native buffer failed
+  VK_ERROR_INVALID_EXTERNAL_HANDLE
+
+Target GPU: Mali-G615 MC6 / Poco X6 Pro
+Target backend: PanVK kbase CSF v11
+Mesa base: 5a07217f034b3e50d8c7c7794f97a2df1742613b
+
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -216,7 +216,7 @@
+ {
+    assert(anb && anb->handle && anb->handle->numFds > 0);
+ 
+-   int dma_buf_fd = anb->handle->data[0];
++   int dma_buf_fd = -1;
+ 
+    /* Query image memory requirements for size and supported memory types */
+    VkMemoryRequirements mem_reqs;
+@@ -226,12 +226,39 @@
+    VkMemoryFdPropertiesKHR fd_props = {
+       .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR,
+    };
+-   VkResult result = device->dispatch_table.GetMemoryFdPropertiesKHR(
+-      (VkDevice)device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+-      dma_buf_fd, &fd_props);
+-   if (result != VK_SUCCESS) {
+-      mesa_loge("GetMemoryFdPropertiesKHR failed");
+-      return result;
++
++   VkResult result = VK_ERROR_INVALID_EXTERNAL_HANDLE;
++
++   mesa_logi("[ANB-FD] probing %d native handle fds",
++             anb->handle->numFds);
++
++   for (int i = 0; i < anb->handle->numFds; i++) {
++      int fd = anb->handle->data[i];
++
++      if (fd < 0)
++         continue;
++
++      fd_props.memoryTypeBits = 0;
++
++      result = device->dispatch_table.GetMemoryFdPropertiesKHR(
++         (VkDevice)device,
++         VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++         fd,
++         &fd_props);
++
++      mesa_logi("[ANB-FD] index=%d fd=%d result=%d memoryTypeBits=%#x",
++                i, fd, result, fd_props.memoryTypeBits);
++
++      if (result == VK_SUCCESS) {
++         dma_buf_fd = fd;
++         mesa_logi("[ANB-FD] selected index=%d fd=%d", i, fd);
++         break;
++      }
++   }
++
++   if (dma_buf_fd < 0) {
++      mesa_loge("[ANB-FD] no importable DMA-BUF found");
++      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+    }
+ 
+    uint32_t compatible_types = mem_reqs.memoryTypeBits & fd_props.memoryTypeBits;
