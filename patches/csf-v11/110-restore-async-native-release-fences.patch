@@ -1,0 +1,53 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 110] android: restore asynchronous native release fences
+
+The stability build forced QueueWaitIdle() on every Android buffer release.
+That serialized CPU/GPU presentation and is a major performance bottleneck.
+
+The dev.13 crash root cause was independently identified as a truncated
+64-bit CS call address and fixed by patch 109. Keep the existing safe
+fallback from patch 104 if SYNC_FD export fails, but allow the normal Kbase
+SYNC_FD export path to run first so successful frames remain asynchronous.
+
+Keep cross-subqueue GPU semaphore waits disabled for now; this change only
+removes the unconditional per-present QueueWaitIdle().
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -658,33 +658,6 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+    if (result != VK_SUCCESS)
+       return result;
+ 
+-   /* Eden/Kbase safety mode.  Kbase does not use DRM syncobjs and the
+-    * experimental KCPU SYNC_FD export path has caused a whole-device hang on
+-    * the reference phone.  For the dedicated Eden build, complete the queue
+-    * synchronously and hand Android an already-signaled fence (-1) instead of
+-    * entering the KCPU fence-export ioctl path.  This is deliberately a
+-    * correctness/stability fallback and sacrifices CPU/GPU overlap until the
+-    * KCPU exporter is proven safe on-device.
+-    *
+-    * The kbase path leaves copy_sync_payloads unset (csf-v11/103), while DRM
+-    * PanVK keeps that callback.  That makes this condition specific to the
+-    * kbase logical-device path without adding PanVK-private types here.
+-    */
+-   if (device->physical->properties.driverID == VK_DRIVER_ID_MESA_PANVK &&
+-       device->copy_sync_payloads == NULL) {
+-      VkResult idle_result = device->dispatch_table.QueueWaitIdle(_queue);
+-      mesa_logw("[ANB-SYNC] Eden/Kbase synchronous release QueueWaitIdle=%d",
+-                idle_result);
+-      if (idle_result != VK_SUCCESS)
+-         return idle_result;
+-
+-      device->dispatch_table.DestroySemaphore(
+-         vk_device_to_handle(device), queue->anb_semaphore, NULL);
+-      queue->anb_semaphore = VK_NULL_HANDLE;
+-      *pNativeFenceFd = -1;
+-      return VK_SUCCESS;
+-   }
+-
+    const VkSemaphoreGetFdInfoKHR get_fd = {
+       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+       .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
