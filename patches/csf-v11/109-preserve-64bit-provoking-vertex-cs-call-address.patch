@@ -1,0 +1,26 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 109] panvk: preserve 64-bit provoking-vertex CS call address
+
+The generated CS function buffer can live above 4 GiB on Kbase SAME_VA.
+Storing its GPU address in uint32_t truncated the high bits before cs_call,
+causing a CS translation fault when the function was invoked.
+
+A captured Eden fault had sideband 0xffdb3400 while the live function BO
+was mapped at 0x5fffdb3000; offset 0x400 reconstructs exactly to
+0x5fffdb3400, proving the high address bits were lost in this assignment.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
+index d5318c8..f9dab03 100644
+--- a/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
+@@ -2236,7 +2236,7 @@ get_fb_descs(struct panvk_cmd_buffer *cmdbuf)
+          uint32_t fn_idx = calc_fn_set_fbds_provoking_vertex_idx(cmdbuf);
+          uint32_t fn_stride =
+             dev->draw_ctx->fn_set_fbds_provoking_vertex_stride;
+-         uint32_t fn_addr =
++         uint64_t fn_addr =
+             dev->draw_ctx->fns_bo->addr.dev + fn_idx * fn_stride;
+          cs_move64_to(b, addr_reg, fn_addr);
+          cs_move32_to(b, length_reg, fn_stride);
