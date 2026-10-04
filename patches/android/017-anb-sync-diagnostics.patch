@@ -1,0 +1,93 @@
+From: panvk-kbase-android worker <panvk-worker@localhost>
+Subject: [PATCH android 017] vulkan/android: trace ANB release synchronization
+
+Purpose: Trace VK_ANDROID_native_buffer release synchronization to distinguish
+QueueSubmit2 failures from SYNC_FD export failures on Android.
+
+Target: Mali-G615 MC6 / Poco X6 Pro / Kbase CSF v11
+Mesa base: 5a07217f034b3e50d8c7c7794f97a2df1742613b
+
+diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
+index 703a229..55aab99 100644
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -53,6 +53,8 @@
+ 
+ #include <unistd.h>
+ #include <sys/stat.h>
++#include <errno.h>
++#include <string.h>
+ 
+ static struct u_gralloc *_gralloc;
+ 
+@@ -586,9 +588,11 @@ vk_anb_semaphore_init_once(struct vk_queue *queue, struct vk_device *device)
+       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+       .pNext = &export_info,
+    };
+-   return device->dispatch_table.CreateSemaphore(vk_device_to_handle(device),
+-                                                 &create_info, NULL,
+-                                                 &queue->anb_semaphore);
++   VkResult result = device->dispatch_table.CreateSemaphore(
++      vk_device_to_handle(device), &create_info, NULL, &queue->anb_semaphore);
++   mesa_logi("[ANB-SYNC] CreateSemaphore(export SYNC_FD) result=%d semaphore=%p",
++             result, (void *)(uintptr_t)queue->anb_semaphore);
++   return result;
+ }
+ 
+ VKAPI_ATTR VkResult VKAPI_CALL
+@@ -602,12 +606,17 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+    struct vk_device *device = queue->base.device;
+    VkResult result;
+ 
++   mesa_logi("[ANB-SYNC] release begin waits=%u image=%p",
++             waitSemaphoreCount, (void *)(uintptr_t)image);
++
+    if (waitSemaphoreCount == 0) {
+       *pNativeFenceFd = -1;
++      mesa_logi("[ANB-SYNC] release no waits -> fence=-1");
+       return VK_SUCCESS;
+    }
+ 
+    result = vk_anb_semaphore_init_once(queue, device);
++   mesa_logi("[ANB-SYNC] semaphore init result=%d", result);
+    if (result != VK_SUCCESS)
+       return result;
+ 
+@@ -627,8 +636,10 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+       .stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+    };
+    if (device->copy_sync_payloads != NULL) {
++      mesa_logi("[ANB-SYNC] release path=copy_sync_payloads");
+       result = vk_device_copy_semaphore_payloads(
+          device, waitSemaphoreCount, wait_infos, 1, &signal_info, 0, NULL);
++      mesa_logi("[ANB-SYNC] copy_sync_payloads result=%d", result);
+    } else {
+       const VkSubmitInfo2 submit_info = {
+          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+@@ -637,8 +648,11 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+          .signalSemaphoreInfoCount = 1,
+          .pSignalSemaphoreInfos = &signal_info,
+       };
++      mesa_logi("[ANB-SYNC] release path=QueueSubmit2 waits=%u",
++                waitSemaphoreCount);
+       result = device->dispatch_table.QueueSubmit2(_queue, 1, &submit_info,
+                                                    VK_NULL_HANDLE);
++      mesa_logi("[ANB-SYNC] QueueSubmit2 result=%d", result);
+    }
+    STACK_ARRAY_FINISH(wait_infos);
+    if (result != VK_SUCCESS)
+@@ -649,8 +663,12 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+       .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
+       .semaphore = queue->anb_semaphore,
+    };
+-   return device->dispatch_table.GetSemaphoreFdKHR(vk_device_to_handle(device),
+-                                                   &get_fd, pNativeFenceFd);
++   *pNativeFenceFd = -1;
++   result = device->dispatch_table.GetSemaphoreFdKHR(
++      vk_device_to_handle(device), &get_fd, pNativeFenceFd);
++   mesa_logi("[ANB-SYNC] GetSemaphoreFdKHR result=%d fd=%d errno=%d (%s)",
++             result, *pNativeFenceFd, errno, strerror(errno));
++   return result;
+ }
+ 
+ #if ANDROID_API_LEVEL >= 26
