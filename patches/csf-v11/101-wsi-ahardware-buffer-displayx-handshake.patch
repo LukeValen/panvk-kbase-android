@@ -764,6 +764,16 @@ index c9d35d31b42..2c3113ff3d1 100644
 
     result = wsi_swapchain_init(wsi_device, &chain->base, device, pCreateInfo,
                                 image_params, pAllocator);
+diff --git a/src/android_stub/nativewindow_stub.cpp b/src/android_stub/nativewindow_stub.cpp
+--- a/src/android_stub/nativewindow_stub.cpp
++++ b/src/android_stub/nativewindow_stub.cpp
+@@ -116,4 +116,6 @@
+ int32_t ANativeWindow_unlockAndPost(ANativeWindow *window) { return 0; }
+ int32_t AHardwareBuffer_lock(AHardwareBuffer *buffer, uint64_t usage, int32_t fence, const ARect *rect, void **outVirtualAddress) { return 0; }
+ int32_t AHardwareBuffer_unlock(AHardwareBuffer *buffer, int32_t *fence) { return 0; }
++int AHardwareBuffer_sendHandleToUnixSocket(const AHardwareBuffer *buffer, int socketFd) { return 0; }
++int AHardwareBuffer_recvHandleFromUnixSocket(int socketFd, AHardwareBuffer **outBuffer) { return 0; }
+ }
 --
 2.55.0
 
