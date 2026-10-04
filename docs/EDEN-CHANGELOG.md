@@ -28,6 +28,10 @@ Historical upstream release notes remain in the root `CHANGELOG.md`.
 - Added KCPU/CQS sync-file export diagnostics.
 - Added a dedicated Eden-only CI/package target with Android WSI and Kbase
   only.
+- Added `104-eden-anb-sync-fallback.patch`: if PanVK submits the native-buffer
+  release successfully but Kbase `SYNC_FD` export fails, Eden drains the queue
+  synchronously and returns fence `-1` (already complete) instead of failing
+  presentation. The normal KCPU fence-export path remains preferred.
 
 ### Still under validation
 
