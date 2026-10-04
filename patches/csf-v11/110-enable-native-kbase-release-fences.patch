@@ -1,0 +1,52 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 110] android: enable native Kbase release fences by default
+
+The Eden safety path drained the entire GPU queue on every Android native
+buffer release. In the stable dev.13 trace this happened 2405 times and is
+a major presentation bottleneck. After fixing the 64-bit CS call address
+truncation, restore native Kbase SYNC_FD export by default while retaining
+PANVK_EDEN_SYNC_RELEASE=1 as an emergency synchronous fallback.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
+index 0f7fde4..de88bda 100644
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -54,6 +54,7 @@
+ #include <unistd.h>
+ #include <sys/stat.h>
+ #include <errno.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ static struct u_gralloc *_gralloc;
+@@ -658,20 +659,20 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+    if (result != VK_SUCCESS)
+       return result;
+ 
+-   /* Eden/Kbase safety mode.  Kbase does not use DRM syncobjs and the
+-    * experimental KCPU SYNC_FD export path has caused a whole-device hang on
+-    * the reference phone.  For the dedicated Eden build, complete the queue
+-    * synchronously and hand Android an already-signaled fence (-1) instead of
+-    * entering the KCPU fence-export ioctl path.  This is deliberately a
+-    * correctness/stability fallback and sacrifices CPU/GPU overlap until the
+-    * KCPU exporter is proven safe on-device.
++   /* Eden/Kbase performance mode.  After fixing the 64-bit CS call address
++    * truncation, use the native Kbase SYNC_FD export path by default so
++    * presentation does not drain the whole GPU queue every frame.  Keep the
++    * old fully synchronous release path as an emergency opt-in via
++    * PANVK_EDEN_SYNC_RELEASE=1 while the optimized path is validated.
+     *
+     * The kbase path leaves copy_sync_payloads unset (csf-v11/103), while DRM
+     * PanVK keeps that callback.  That makes this condition specific to the
+     * kbase logical-device path without adding PanVK-private types here.
+     */
++   const char *force_sync_release = getenv("PANVK_EDEN_SYNC_RELEASE");
+    if (device->physical->properties.driverID == VK_DRIVER_ID_MESA_PANVK &&
+-       device->copy_sync_payloads == NULL) {
++       device->copy_sync_payloads == NULL && force_sync_release &&
++       strcmp(force_sync_release, "0") != 0) {
+       VkResult idle_result = device->dispatch_table.QueueWaitIdle(_queue);
+       mesa_logw("[ANB-SYNC] Eden/Kbase synchronous release QueueWaitIdle=%d",
+                 idle_result);
