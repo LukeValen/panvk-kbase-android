@@ -321,7 +321,7 @@ index 00000000000..8862f5c748f
 +   if (!env_blit)
 +      env_blit = getenv("WRAPPER_BLIT");
 +   int wrapper_blit = env_blit && atoi(env_blit);
-+   if (wsi->needs_blit || wrapper_blit)
++   if (wrapper_blit)
 +      return WSI_SWAPCHAIN_IMAGE_BLIT;
 +
 +   return wsi_get_ahardware_buffer_blit_type(wsi, device);
