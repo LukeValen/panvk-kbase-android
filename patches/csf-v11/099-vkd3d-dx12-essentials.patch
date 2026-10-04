@@ -342,8 +342,13 @@ index ecd1b3cf498..859ec86ffb6 100644
 +   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
 +      if (pDescriptorInfo->data.pStorageImage) {
 +         VK_FROM_HANDLE(panvk_image_view, view, pDescriptorInfo->data.pStorageImage->imageView);
-+         if (view)
++         if (view) {
++#if PAN_ARCH >= 9
 +            memcpy(pDescriptor, &view->descs.storage_tex[0], MIN2(dataSize, sizeof(view->descs.storage_tex[0])));
++#else
++            memcpy(pDescriptor, &view->descs.img_attrib_buf[0], MIN2(dataSize, sizeof(view->descs.img_attrib_buf[0])));
++#endif
++         }
 +      }
 +      break;
 +   case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
