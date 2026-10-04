@@ -1,0 +1,50 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 107] kbase: log BO VA lifetime around CSF translation faults
+
+Purpose: correlate fatal CSF translation faults with the exact Kbase BO
+allocation/import/free lifetime. Logs effective GPU VA, kernel cookie/VA,
+mapping, size, handle and flags for every Kbase BO.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index d360a70..c915c4f 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -1659,6 +1659,12 @@ kbase_kmod_import_dmabuf(struct pan_kmod_dev *dev,
+ 
+    pan_kmod_bo_init(&kbase_bo->base, dev, exclusive_vm, bo_size, flags,
+                     handle);
++   mesa_logi("[KBASE-VA] import handle=%u gpu=0x%" PRIx64
++             " kernel=0x%" PRIx64 " map=%p size=0x%" PRIx64
++             " flags=0x%x outflags=0x%" PRIx64,
++             handle, kbase_bo->gpu_va, (uint64_t)req.out.gpu_va,
++             kbase_bo->gpu_mapping, bo_size, flags,
++             (uint64_t)req.out.flags);
+    mesa_logi("kbase_kmod_bo_alloc_dmabuf: succeeded for %d, bo_size=%lu, handle=%u", kbase_bo->dmabuf_fd, bo_size, handle);
+    mesa_logi("kbase: import flags=0x%llx -> va=0x%llx pages=%llu outflags=0x%llx",
+              (unsigned long long)import_flags,
+@@ -1835,6 +1841,12 @@ kbase_kmod_bo_alloc(struct pan_kmod_dev *dev,
+ 
+    pan_kmod_bo_init(&kbase_bo->base, dev, exclusive_vm,
+                     va_pages * page_size, kmod_flags, handle);
++   mesa_logi("[KBASE-VA] alloc handle=%u gpu=0x%" PRIx64
++             " cookie=0x%" PRIx64 " map=%p size=0x%" PRIx64
++             " flags=0x%x outflags=0x%" PRIx64,
++             handle, kbase_bo->gpu_va, alloc_gpu_va,
++             kbase_bo->gpu_mapping, va_pages * page_size, kmod_flags,
++             alloc_flags);
+    return &kbase_bo->base;
+ 
+ err_free_bo:
+@@ -1848,6 +1860,10 @@ kbase_kmod_bo_free(struct pan_kmod_bo *bo)
+    struct kbase_kmod_bo *kbase_bo =
+       container_of(bo, struct kbase_kmod_bo, base);
+ 
++   mesa_logi("[KBASE-VA] free handle=%u gpu=0x%" PRIx64
++             " size=0x%" PRIx64 " flags=0x%x",
++             bo->handle, kbase_bo->gpu_va, bo->size, bo->flags);
++
+    pan_kmod_bo_cleanup(bo);
+ 
+    /* For SAME_VA regions, munmap() alone tears the whole region down
