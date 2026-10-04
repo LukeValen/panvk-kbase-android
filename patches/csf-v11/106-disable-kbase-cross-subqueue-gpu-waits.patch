@@ -1,0 +1,38 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 106] panvk: disable kbase cross-subqueue GPU waits by default
+
+Purpose: A captured Eden hang on Mali-G615 showed all three kbase CSF
+subqueues parked at seqno 159 while waiting for target 163, with no kbase
+error bit set. This is consistent with a userspace-generated circular
+cross-subqueue wait. Keep semaphore waits on the CPU by default for the
+dedicated Eden build until the GPU dependency path is proven deadlock-free.
+
+Developers can re-enable the asynchronous path explicitly with:
+PANVK_KBASE_GPU_SEMAPHORE_WAITS=1
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+--- a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+@@ -2677,10 +2677,17 @@ panvk_queue_submit_init_signals(struct panvk_queue_submit *submit,
+ }
+ 
+ #ifdef HAVE_PAN_KMOD_KBASE
+-/* Enabled by default for async submission and full GPU utilization: */
+-/* set PANVK_KBASE_GPU_SEMAPHORE_WAITS=0 to disable GPU waits. */
++/* Eden/Kbase stability default: keep cross-subqueue semaphore waits on the
++ * CPU until the userspace CSF dependency scheme is proven deadlock-free on
++ * the reference Mali-G615.  A captured Eden hang showed all three subqueues
++ * parked at seqno 159 while waiting for target 163, with no kbase error bit,
++ * which is consistent with a userspace-generated circular GPU wait.
++ *
++ * Developers can explicitly re-enable the asynchronous path with
++ * PANVK_KBASE_GPU_SEMAPHORE_WAITS=1 for isolated testing.
++ */
+ DEBUG_GET_ONCE_BOOL_OPTION(kbase_gpu_semaphore_waits,
+-                           "PANVK_KBASE_GPU_SEMAPHORE_WAITS", true)
++                           "PANVK_KBASE_GPU_SEMAPHORE_WAITS", false)
+ 
+ static bool
+ kbase_gpu_waits_disabled(void)
