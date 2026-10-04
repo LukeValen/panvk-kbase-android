@@ -1,0 +1,42 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 104] android: add safe Eden release-fence fallback
+
+Purpose: If PanVK successfully submits Android native-buffer release work
+but Kbase SYNC_FD export still fails, wait the queue idle and return fence=-1.
+Android accepts -1 when producer work is already complete. This provides a
+correct, synchronous stability fallback for Eden while preserving the normal
+Kbase KCPU fence-export fast path when it succeeds.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
+index 55aab99..deec23c 100644
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -668,6 +668,26 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+       vk_device_to_handle(device), &get_fd, pNativeFenceFd);
+    mesa_logi("[ANB-SYNC] GetSemaphoreFdKHR result=%d fd=%d errno=%d (%s)",
+              result, *pNativeFenceFd, errno, strerror(errno));
++
++   /* Eden stability fallback for PanVK/Kbase: if the submitted release work
++    * completed successfully but exporting its SYNC_FD failed, synchronously
++    * drain the queue before handing the native buffer back to Android.  A
++    * fence fd of -1 is valid when the producer work is already complete.
++    * This keeps presentation correct while the Kbase KCPU fence-export path
++    * is being hardened, at the cost of CPU/GPU overlap on the fallback path.
++    */
++   if (result != VK_SUCCESS &&
++       device->physical->properties.driverID == VK_DRIVER_ID_MESA_PANVK) {
++      VkResult idle_result = device->dispatch_table.QueueWaitIdle(_queue);
++      mesa_logw("[ANB-SYNC] SYNC_FD export failed (%d); PanVK synchronous "
++                "release fallback QueueWaitIdle=%d",
++                result, idle_result);
++      if (idle_result == VK_SUCCESS) {
++         *pNativeFenceFd = -1;
++         return VK_SUCCESS;
++      }
++   }
++
+    return result;
+ }
+ 
