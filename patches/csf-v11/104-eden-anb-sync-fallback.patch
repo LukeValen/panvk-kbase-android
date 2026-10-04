@@ -3,17 +3,16 @@ Subject: [PATCH csf-v11 104] android: add safe Eden release-fence fallback
 
 Purpose: If PanVK successfully submits Android native-buffer release work
 but Kbase SYNC_FD export still fails, wait the queue idle and return fence=-1.
-Android accepts -1 when producer work is already complete. This provides a
-correct, synchronous stability fallback for Eden while preserving the normal
-Kbase KCPU fence-export fast path when it succeeds.
+The fallback destroys the temporary export semaphore after the queue drains so
+a failed export cannot leave a signaled binary semaphore to be reused.
 
 Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
 
 diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
-index 55aab99..deec23c 100644
+index 55aab99..493cc2a 100644
 --- a/src/vulkan/runtime/vk_android.c
 +++ b/src/vulkan/runtime/vk_android.c
-@@ -668,6 +668,26 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+@@ -668,6 +668,29 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
        vk_device_to_handle(device), &get_fd, pNativeFenceFd);
     mesa_logi("[ANB-SYNC] GetSemaphoreFdKHR result=%d fd=%d errno=%d (%s)",
               result, *pNativeFenceFd, errno, strerror(errno));
@@ -32,6 +31,9 @@ index 55aab99..deec23c 100644
 +                "release fallback QueueWaitIdle=%d",
 +                result, idle_result);
 +      if (idle_result == VK_SUCCESS) {
++         device->dispatch_table.DestroySemaphore(
++            vk_device_to_handle(device), queue->anb_semaphore, NULL);
++         queue->anb_semaphore = VK_NULL_HANDLE;
 +         *pNativeFenceFd = -1;
 +         return VK_SUCCESS;
 +      }
