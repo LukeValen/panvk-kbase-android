@@ -117,15 +117,18 @@ jobs:
         run: meson compile -C build
 
       - name: Package Eden driver
-        run: ./scripts/package-release-zip.sh --flavor eden --version "0.1.0-eden-dev.1"
+        run: |
+          VER="0.1.0-eden-dev.${GITHUB_RUN_NUMBER}"
+          ./scripts/package-release-zip.sh --flavor eden --version "$VER"
+          echo "EDEN_DRIVER_VERSION=$VER" >> "$GITHUB_ENV"
 
       - name: Upload Eden driver package
         uses: actions/upload-artifact@v4
         with:
-          name: PanVK-G615-Eden-dev
+          name: PanVK-G615-Eden-${{ env.EDEN_DRIVER_VERSION }}
           path: |
-            PanVK-G615-0.1.0-eden-dev.1-eden.zip
-            PanVK-G615-0.1.0-eden-dev.1-eden-MANIFEST.txt
+            PanVK-G615-*-eden.zip
+            PanVK-G615-*-eden-MANIFEST.txt
             SHA256SUMS.txt
           if-no-files-found: error
 
