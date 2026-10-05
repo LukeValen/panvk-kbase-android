@@ -2,7 +2,7 @@
 set -eu
 
 # package-release-zip.sh — Package PanVK Mali-G615 driver.
-# Usage: ./scripts/package-release-zip.sh --flavor [eden|adrenotools|x11] [--so <path>] [--version <ver>]
+# Usage: ./scripts/package-release-zip.sh --flavor [eden|strato|adrenotools|x11] [--so <path>] [--version <ver>]
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FLAVOR=""
@@ -21,8 +21,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$FLAVOR" in
-  eden|adrenotools|x11) ;;
-  *) echo "Error: --flavor is required (eden, adrenotools or x11)" >&2; exit 1 ;;
+  eden|strato|adrenotools|x11) ;;
+  *) echo "Error: --flavor is required (eden, strato, adrenotools or x11)" >&2; exit 1 ;;
 esac
 
 if [ -z "$SO_PATH" ]; then
@@ -45,6 +45,11 @@ if flavor == "eden":
     desc = ("Experimental PanVK Mali-G615/Kbase-CSF driver for Eden Android "
             "Nintendo Switch emulation. Requires the specific experimental Eden "
             "build used by this project; that Eden build is not distributed here.")
+    author = "LukeValen (fork; upstream GunaCharanTeja/panvk-kbase-android)"
+elif flavor == "strato":
+    name = "PanVK G615 Strato Mali"
+    desc = ("Experimental Mesa PanVK Mali-G615/Kbase-CSF driver packaged for "
+            "Strato Mali's custom Vulkan driver loader.")
     author = "LukeValen (fork; upstream GunaCharanTeja/panvk-kbase-android)"
 elif flavor == "adrenotools":
     name = "PanVK G615"
@@ -70,7 +75,11 @@ with open("$STAGE/meta.json", "w") as f:
     json.dump(meta, f, indent=2)
 EOF
 
-ZIP_NAME="PanVK-G615-$VERSION-$FLAVOR.zip"
+if [ "$FLAVOR" = "strato" ]; then
+  ZIP_NAME="PanVK-G615-Strato-Mali-$VERSION.zip"
+else
+  ZIP_NAME="PanVK-G615-$VERSION-$FLAVOR.zip"
+fi
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR/$ZIP_NAME"
 
