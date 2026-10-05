@@ -1,0 +1,27 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 112] panfrost: enable R5G5B5A1 sampling on Valhall
+
+Expose the exact A1/BGR5 packed texture encoding already present in the
+Valhall genxml as sample/transfer-only support for PIPE_FORMAT_A1B5G5R5.
+This makes VK_FORMAT_R5G5B5A1_UNORM_PACK16 usable by Eden without claiming
+render-target or storage support.
+
+Target: Eden Android / Mali-G615 MC6 / PAN_ARCH 11
+
+diff --git a/src/panfrost/lib/pan_format.c b/src/panfrost/lib/pan_format.c
+index 039f096..71337b4 100644
+--- a/src/panfrost/lib/pan_format.c
++++ b/src/panfrost/lib/pan_format.c
+@@ -331,6 +331,12 @@ const struct pan_format GENX(pan_pipe_format)[PIPE_FORMAT_COUNT] = {
+    FMT(R5G5B5X1_UNORM,          RGB5_A1_UNORM,   RGB1, L, VT__IB),
+    FMT(B5G5R5X1_UNORM,          RGB5_A1_UNORM,   BGR1, L, VT__IB),
+    FMT(R5G5B5A1_UNORM,          RGB5_A1_UNORM,   RGBA, L, VTR_IB),
++   /* VK_FORMAT_R5G5B5A1_UNORM_PACK16 maps to PIPE_FORMAT_A1B5G5R5_UNORM.
++    * Valhall exposes the exact A1/BGR5 packed texture encoding; advertise it
++    * for sampling/transfer only.  Eden uses this format for Switch
++    * A5B5G5R1 textures (notably observed in Breath of the Wild).
++    */
++   FMT(A1B5G5R5_UNORM,          A1_BGR5_UNORM,   RGBA, L, _T____),
+    FMT(B5G5R5A1_UNORM,          RGB5_A1_UNORM,   BGRA, L, VTR_IB),
+    FMT(R10G10B10X2_UNORM,       RGB10_A2_UNORM,  RGB1, L, VTR_IB),
+    FMT(B10G10R10X2_UNORM,       RGB10_A2_UNORM,  BGR1, L, VTR_IB),
