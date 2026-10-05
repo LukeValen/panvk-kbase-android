@@ -1,0 +1,144 @@
+name: Build PanVK Mali-G615 for Strato Mali
+
+on:
+  push:
+    branches:
+      - strato-mali
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-panvk-strato:
+    name: Build PanVK G615 (Strato Mali)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential \
+              llvm-20-dev \
+              libclang-20-dev \
+              libclc-20-dev \
+              libllvmspirvlib-20-dev \
+              libelf-dev \
+              spirv-tools \
+              bison \
+              flex \
+              libdrm-dev \
+              pkg-config \
+              gettext
+          python -m pip install --upgrade pip
+          pip install mako PyYAML meson ninja packaging
+
+      - name: Verify sources.lock
+        run: python3 -c "import json; d=json.load(open('sources.lock')); assert len(d['mesaCommit'])==40, d"
+
+      - name: Fetch pinned Mesa
+        run: ./scripts/fetch-mesa.sh
+
+      - name: Apply Strato Mali PanVK patch stack
+        run: ./scripts/apply-patches.sh --profile g615-v11-csf
+
+      - name: Generate host tools
+        run: |
+          meson setup build-host work/mesa \
+              -Dbuildtype=release \
+              -Db_ndebug=true \
+              -Dplatforms=[] \
+              -Dgallium-drivers=[] \
+              -Dvulkan-drivers=[] \
+              -Dtools=panfrost \
+              -Dprecomp-compiler=enabled \
+              -Dinstall-precomp-compiler=true \
+              -Dllvm=enabled \
+              -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+
+          ninja -C build-host src/compiler/clc/mesa_clc src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+          ln -sf "$GITHUB_WORKSPACE/build-host/src/compiler/clc/mesa_clc" "$GITHUB_WORKSPACE/build-host/src/compiler/clc/mesa-clc"
+          ln -sf "$GITHUB_WORKSPACE/build-host/src/compiler/spirv/vtn_bindgen2" "$GITHUB_WORKSPACE/build-host/src/compiler/spirv/vtn-bindgen2"
+          echo "$GITHUB_WORKSPACE/build-host/src/compiler/clc" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
+
+      - name: Configure Strato Mali Android driver
+        env:
+          PKG_CONFIG_LIBDIR: ${{ github.workspace }}/shims
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export MESON_WORKING_DIR="$GITHUB_WORKSPACE"
+          CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1)"
+          if [ -z "$CLANG_DIR" ]; then
+            CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1)"
+          fi
+          export CLANG_LIB_DIR="${CLANG_DIR:-$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/18/lib/linux/aarch64}"
+          envsubst < android.toml > android-cross.txt
+
+          meson setup build work/mesa \
+              --cross-file android-cross.txt \
+              -Dbuildtype=release \
+              -Db_ndebug=true \
+              -Dplatforms=android \
+              -Dandroid-stub=true \
+              -Dandroid-strict=false \
+              -Dandroid-libbacktrace=disabled \
+              -Dplatform-sdk-version=30 \
+              -Dglx=disabled \
+              -Dgbm=disabled \
+              -Degl=disabled \
+              -Dopengl=false \
+              -Dgles1=disabled \
+              -Dgles2=disabled \
+              -Dglvnd=disabled \
+              -Dvalgrind=disabled \
+              -Dgallium-drivers= \
+              -Dshared-glapi=disabled \
+              -Dzstd=disabled \
+              -Dmesa-clc=system \
+              -Dprecomp-compiler=system \
+              -Dvulkan-drivers=panfrost \
+              -Dllvm=disabled \
+              -Dpanfrost-kmds=kbase
+
+      - name: Compile PanVK Strato Mali driver
+        run: meson compile -C build
+
+      - name: Package Strato Mali driver
+        run: |
+          VER="0.1.0-strato-dev.${GITHUB_RUN_NUMBER}"
+          ./scripts/package-release-zip.sh --flavor strato --version "$VER"
+          echo "STRATO_DRIVER_VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Upload Strato Mali driver package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanVK-G615-Strato-Mali-${{ env.STRATO_DRIVER_VERSION }}
+          path: |
+            PanVK-G615-Strato-Mali-*.zip
+            PanVK-G615-*-strato-MANIFEST.txt
+            SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish rolling Strato Mali prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          ZIP="$(find . -maxdepth 1 -name 'PanVK-G615-Strato-Mali-*.zip' | head -n1)"
+          test -n "$ZIP"
+          gh release delete panvk-strato-latest --cleanup-tag -y || true
+          gh release create panvk-strato-latest "$ZIP" \
+            --title "PanVK G615 Strato Mali latest" \
+            --notes "Rolling experimental PanVK build for Strato Mali." \
+            --prerelease
