@@ -1,0 +1,47 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 113] panvk: let Eden transcode BCn on Kbase
+
+PanVK advertises textureCompressionBC when its internal BC emulation is
+enabled, so Eden keeps guest BCn textures compressed and relies on PanVK's
+meta-compute decoder.
+
+For the dedicated Android Kbase path, hide the BC feature bit so Eden uses its
+existing BCn transcode fallback instead. This is a targeted compatibility test
+for black or missing BOTW materials on Mali-G615. DRM/Panthor behavior remains
+unchanged.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/panfrost/vulkan/panvk_vX_physical_device.c b/src/panfrost/vulkan/panvk_vX_physical_device.c
+index 4d9ecbb..bc210d9 100644
+--- a/src/panfrost/vulkan/panvk_vX_physical_device.c
++++ b/src/panfrost/vulkan/panvk_vX_physical_device.c
+@@ -299,6 +299,18 @@ has_texture_compression_bc(const struct panvk_physical_device *physical_device)
+       BITFIELD_BIT(MALI_BC6H_UF16) | BITFIELD_BIT(MALI_BC7_UNORM));
+ }
+ 
++static bool
++expose_texture_compression_bc(const struct panvk_physical_device *physical_device)
++{
++#ifdef HAVE_PAN_KMOD_KBASE
++   if (physical_device->kbase_node_path[0])
++      return false;
++#endif
++
++   return has_texture_compression_bc(physical_device) ||
++          panvk_bc_emul_enabled(physical_device);
++}
++
+ void
+ panvk_per_arch(get_physical_device_features)(
+    const struct panvk_instance *instance,
+@@ -333,8 +345,7 @@ panvk_per_arch(get_physical_device_features)(
+       .samplerAnisotropy = true,
+       .textureCompressionETC2 = has_texture_compression_etc2(device),
+       .textureCompressionASTC_LDR = has_texture_compression_astc_ldr(device),
+-      .textureCompressionBC = has_texture_compression_bc(device) ||
+-                              panvk_bc_emul_enabled(device),
++      .textureCompressionBC = expose_texture_compression_bc(device),
+       .occlusionQueryPrecise = true,
+       .pipelineStatisticsQuery = PAN_ARCH >= 10,
+       /* On v13+, the hardware isn't speculatively referencing to invalid
