@@ -1,53 +1,43 @@
-# PanVK Kbase Android — Eden Switch Emulator Fork
+# PanVK Kbase Android — Strato Mali Fork
 
-> **Current fork scope: Eden Android / Nintendo Switch emulation only.**
+> **Current branch scope: Strato Mali / Nintendo Switch emulation on Mali-G615.**
 >
-> This fork is currently developed as a custom Vulkan driver for the
-> **Eden Android Switch emulator** on Mali-G615/Kbase-CSF devices. It is not
-> currently maintained as a general-purpose Winlator, Termux:X11, GameHub or
-> desktop compatibility fork.
+> This branch packages the Kbase/CSF PanVK work specifically for the private
+> **Strato Mali** fork. It is experimental and is not presented as a conformant
+> or production-ready Vulkan driver.
 
 This repository is a fork of
 [`GunaCharanTeja/panvk-kbase-android`](https://github.com/GunaCharanTeja/panvk-kbase-android)
-and keeps the Mesa/PanVK and Kbase work from the upstream project. Eden-specific
-integration, Android Native Buffer fixes, synchronization fixes and validation
-are developed here by **LukeValen**.
+and keeps the Mesa/PanVK and Kbase foundation from that project. The Strato
+integration, Android Native Buffer work, Kbase synchronization fixes and
+Mali-G615 validation are maintained here by **LukeValen**.
 
-## Eden compatibility
+## Strato Mali integration
 
-This driver currently requires a **specific experimental Eden build** with the
-Mali custom-driver loading changes used during development. That Eden build is
-**not distributed from this repository yet**.
+Strato Mali uses Strato/Skyline's existing custom Vulkan-driver package system
+and Android linker namespace. The integration deliberately keeps Adreno-only
+features separate from Mali/Kbase:
 
-Using this driver with a normal/public Eden build is not supported at this
-stage and may result in startup failures, black output, presentation problems
-or crashes.
+- custom Vulkan packages are allowed when `/dev/mali0` is present;
+- PanVK is loaded from Strato's existing `gpu_drivers` directory;
+- KGSL/libgsl direct-memory import hooks stay disabled on Mali;
+- Strato's normal buffer upload path is used on Kbase;
+- BCn formats can fall back to Strato's software transcode path when PanVK does
+  not expose them as native;
+- Android Native Buffer DMA-BUF discovery supports MediaTek native handles;
+- Android release fences use the Kbase `SYNC_FD` path without draining the
+  whole Vulkan queue every frame;
+- the 64-bit CS call-address truncation found on high Kbase GPU VAs is fixed.
 
 Reference target:
 
 - Poco X6 Pro / Dimensity 8300 Ultra
 - Mali-G615 MC6, Pan arch v11, CSF
 - Android Kbase interface at `/dev/mali0`
-- Eden Android Switch emulator using the experimental Mali custom-driver path
+- Strato Mali Android emulator with the bundled PanVK package
 
-## Current Eden work
-
-Active integration work includes:
-
-- loading PanVK through Eden's custom Vulkan driver path on Mali;
-- MediaTek gralloc/mapper metadata handling;
-- Android Native Buffer DMA-BUF discovery instead of assuming `native_handle_t->data[0]`;
-- native-buffer import through `VK_ANDROID_native_buffer`;
-- Android release-fence / `SYNC_FD` handling on Kbase;
-- avoiding DRM-syncobj payload-copy logic on Kbase devices;
-- swapchain/presentation diagnostics for black-screen and crash investigation.
-
-The ANB DMA-BUF issue has been identified and fixed on the reference device.
-Presentation synchronization and crash hardening are still under active
-validation, so this fork should be treated as **experimental / development-only**.
-
-See [`docs/EDEN-INTEGRATION.md`](docs/EDEN-INTEGRATION.md) for the current
-technical status, requirements and known issues.
+The rolling Strato package is built from the `strato-mali` branch and
+published as the prerelease tag `panvk-strato-latest`.
 
 ## Upstream foundation
 
