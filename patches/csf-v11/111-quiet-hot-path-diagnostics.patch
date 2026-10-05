@@ -1,0 +1,202 @@
+From: LukeValen <panvk-eden@localhost>
+Subject: [PATCH csf-v11 111] panvk: quiet hot-path Eden diagnostics
+
+The bring-up builds logged every Android release fence, every Kbase sync-file
+export, and every Kbase BO lifetime transition. Those logs were useful while
+isolating the crash, but they sit on presentation and allocation hot paths and
+distort emulator performance.
+
+Keep error/fatal diagnostics and CSF fault snapshots, but remove successful
+per-frame/per-allocation info logging from normal Eden builds.
+
+Target: Eden Android / Mali-G615 MC6 / Kbase CSF v11
+
+diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
+index de88bda..23c8d83 100644
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -589,11 +589,8 @@ vk_anb_semaphore_init_once(struct vk_queue *queue, struct vk_device *device)
+       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+       .pNext = &export_info,
+    };
+-   VkResult result = device->dispatch_table.CreateSemaphore(
++   return device->dispatch_table.CreateSemaphore(
+       vk_device_to_handle(device), &create_info, NULL, &queue->anb_semaphore);
+-   mesa_logi("[ANB-SYNC] CreateSemaphore(export SYNC_FD) result=%d semaphore=%p",
+-             result, (void *)(uintptr_t)queue->anb_semaphore);
+-   return result;
+ }
+ 
+ VKAPI_ATTR VkResult VKAPI_CALL
+@@ -607,17 +604,12 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+    struct vk_device *device = queue->base.device;
+    VkResult result;
+ 
+-   mesa_logi("[ANB-SYNC] release begin waits=%u image=%p",
+-             waitSemaphoreCount, (void *)(uintptr_t)image);
+-
+    if (waitSemaphoreCount == 0) {
+       *pNativeFenceFd = -1;
+-      mesa_logi("[ANB-SYNC] release no waits -> fence=-1");
+       return VK_SUCCESS;
+    }
+ 
+    result = vk_anb_semaphore_init_once(queue, device);
+-   mesa_logi("[ANB-SYNC] semaphore init result=%d", result);
+    if (result != VK_SUCCESS)
+       return result;
+ 
+@@ -637,10 +629,8 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+       .stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+    };
+    if (device->copy_sync_payloads != NULL) {
+-      mesa_logi("[ANB-SYNC] release path=copy_sync_payloads");
+       result = vk_device_copy_semaphore_payloads(
+          device, waitSemaphoreCount, wait_infos, 1, &signal_info, 0, NULL);
+-      mesa_logi("[ANB-SYNC] copy_sync_payloads result=%d", result);
+    } else {
+       const VkSubmitInfo2 submit_info = {
+          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+@@ -649,11 +639,8 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+          .signalSemaphoreInfoCount = 1,
+          .pSignalSemaphoreInfos = &signal_info,
+       };
+-      mesa_logi("[ANB-SYNC] release path=QueueSubmit2 waits=%u",
+-                waitSemaphoreCount);
+       result = device->dispatch_table.QueueSubmit2(_queue, 1, &submit_info,
+                                                    VK_NULL_HANDLE);
+-      mesa_logi("[ANB-SYNC] QueueSubmit2 result=%d", result);
+    }
+    STACK_ARRAY_FINISH(wait_infos);
+    if (result != VK_SUCCESS)
+@@ -694,8 +681,6 @@ vk_common_QueueSignalReleaseImageANDROID(VkQueue _queue,
+    *pNativeFenceFd = -1;
+    result = device->dispatch_table.GetSemaphoreFdKHR(
+       vk_device_to_handle(device), &get_fd, pNativeFenceFd);
+-   mesa_logi("[ANB-SYNC] GetSemaphoreFdKHR result=%d fd=%d errno=%d (%s)",
+-             result, *pNativeFenceFd, errno, strerror(errno));
+ 
+    /* Eden stability fallback for PanVK/Kbase: if the submitted release work
+     * completed successfully but exporting its SYNC_FD failed, synchronously
+diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
+index 3d1c14e..06b0e8c 100644
+--- a/src/panfrost/vulkan/panvk_physical_device.c
++++ b/src/panfrost/vulkan/panvk_physical_device.c
+@@ -1036,16 +1036,12 @@ kbase_cpu_sync_export_sync_file(struct vk_device *device,
+    unsigned count = 0;
+    int fd;
+ 
+-   mesa_logi("[KBASE-SYNC] export_sync_file begin");
+    VkResult result =
+       kbase_cpu_sync_wait_one(device, ks, VK_SYNC_WAIT_PENDING, UINT64_MAX);
+-   mesa_logi("[KBASE-SYNC] wait_pending result=%d", result);
+    if (result != VK_SUCCESS)
+       return result;
+ 
+    mtx_lock(&ks->mutex);
+-   mesa_logi("[KBASE-SYNC] state=%d pending_wait=%p",
+-             ks->state, (void *)(uintptr_t)ks->pending_wait);
+    if (ks->state == KBASE_CPU_SYNC_PENDING ||
+        ks->state == KBASE_CPU_SYNC_WAITING) {
+       if (ks->pending_wait == kbase_sync_file_wait_func) {
+@@ -1075,16 +1071,9 @@ kbase_cpu_sync_export_sync_file(struct vk_device *device,
+       count = 0;
+    }
+ 
+-   mesa_logi("[KBASE-SYNC] exporting CQS fence count=%u", count);
+-   for (unsigned i = 0; i < count && i < PANVK_KBASE_SYNC_TARGET_COUNT; i++)
+-      mesa_logi("[KBASE-SYNC] target[%u] addr=%#" PRIx64 " val=%#" PRIx64,
+-                i, addrs[i], vals[i]);
+-
+    errno = 0;
+    fd = kbase_kmod_csf_export_cqs64_fence(dev->kmod.dev, addrs, vals,
+                                           count);
+-   mesa_logi("[KBASE-SYNC] kcpu export fd=%d errno=%d (%s)",
+-             fd, errno, strerror(errno));
+ 
+ out:
+    if (fd < 0) {
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index c915c4f..39c97f3 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -1028,8 +1028,6 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+       },
+    };
+ 
+-   mesa_logi("[KBASE-SYNC] kcpu export enter count=%u", count);
+-
+    if (!kbase_dev->is_csf) {
+       errno = ENOTSUP;
+       mesa_loge("[KBASE-SYNC] kcpu export rejected: not CSF");
+@@ -1072,7 +1070,6 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+       }
+       kbase_dev->kcpu_export.id = create.id;
+       kbase_dev->kcpu_export.valid = true;
+-      mesa_logi("[KBASE-SYNC] KCPU_QUEUE_CREATE id=%u", create.id);
+    }
+ 
+    for (unsigned i = count ? 0 : 1; i < 2; i++) {
+@@ -1082,8 +1079,6 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+          .id = kbase_dev->kcpu_export.id,
+       };
+       errno = 0;
+-      mesa_logi("[KBASE-SYNC] KCPU_QUEUE_ENQUEUE slot=%u type=%u id=%u",
+-                i, commands[i].type, kbase_dev->kcpu_export.id);
+       if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+          int err = errno;
+          mesa_loge("[KBASE-SYNC] KCPU_QUEUE_ENQUEUE failed slot=%u type=%u errno=%d (%s)",
+@@ -1092,16 +1087,12 @@ kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+          errno = err;
+          return -1;
+       }
+-      mesa_logi("[KBASE-SYNC] KCPU_QUEUE_ENQUEUE ok slot=%u fence_fd=%d",
+-                i, fence.basep.fd);
+    }
+    simple_mtx_unlock(&kbase_dev->kcpu_export.lock);
+ 
+    if (fence.basep.fd < 0) {
+       errno = ENOENT;
+       mesa_loge("[KBASE-SYNC] fence signal enqueued but no fd returned");
+-   } else {
+-      mesa_logi("[KBASE-SYNC] fence export success fd=%d", fence.basep.fd);
+    }
+    return fence.basep.fd;
+ }
+@@ -1659,12 +1650,6 @@ kbase_kmod_import_dmabuf(struct pan_kmod_dev *dev,
+ 
+    pan_kmod_bo_init(&kbase_bo->base, dev, exclusive_vm, bo_size, flags,
+                     handle);
+-   mesa_logi("[KBASE-VA] import handle=%u gpu=0x%" PRIx64
+-             " kernel=0x%" PRIx64 " map=%p size=0x%" PRIx64
+-             " flags=0x%x outflags=0x%" PRIx64,
+-             handle, kbase_bo->gpu_va, (uint64_t)req.out.gpu_va,
+-             kbase_bo->gpu_mapping, bo_size, flags,
+-             (uint64_t)req.out.flags);
+    mesa_logi("kbase_kmod_bo_alloc_dmabuf: succeeded for %d, bo_size=%lu, handle=%u", kbase_bo->dmabuf_fd, bo_size, handle);
+    mesa_logi("kbase: import flags=0x%llx -> va=0x%llx pages=%llu outflags=0x%llx",
+              (unsigned long long)import_flags,
+@@ -1841,12 +1826,6 @@ kbase_kmod_bo_alloc(struct pan_kmod_dev *dev,
+ 
+    pan_kmod_bo_init(&kbase_bo->base, dev, exclusive_vm,
+                     va_pages * page_size, kmod_flags, handle);
+-   mesa_logi("[KBASE-VA] alloc handle=%u gpu=0x%" PRIx64
+-             " cookie=0x%" PRIx64 " map=%p size=0x%" PRIx64
+-             " flags=0x%x outflags=0x%" PRIx64,
+-             handle, kbase_bo->gpu_va, alloc_gpu_va,
+-             kbase_bo->gpu_mapping, va_pages * page_size, kmod_flags,
+-             alloc_flags);
+    return &kbase_bo->base;
+ 
+ err_free_bo:
+@@ -1860,10 +1839,6 @@ kbase_kmod_bo_free(struct pan_kmod_bo *bo)
+    struct kbase_kmod_bo *kbase_bo =
+       container_of(bo, struct kbase_kmod_bo, base);
+ 
+-   mesa_logi("[KBASE-VA] free handle=%u gpu=0x%" PRIx64
+-             " size=0x%" PRIx64 " flags=0x%x",
+-             bo->handle, kbase_bo->gpu_va, bo->size, bo->flags);
+-
+    pan_kmod_bo_cleanup(bo);
+ 
+    /* For SAME_VA regions, munmap() alone tears the whole region down
