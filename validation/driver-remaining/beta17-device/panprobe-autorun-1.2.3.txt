@@ -1,0 +1,20 @@
+INFO devices=1 exts=188 formats=196
+RESULT gpu_prerast_slice PASS mismatch=0 fps=0 ms=82
+RESULT clip_cull PASS mismatch=0 fps=6107.6 ms=1099
+RESULT multi_viewport PASS mismatch=0 fps=6579.3 ms=1074
+RESULT fill_mode PASS mismatch=0 fps=6202.1 ms=1316
+RESULT bc_decode PASS mismatch=0 fps=0 ms=363
+RESULT geometry PASS mismatch=0 fps=6088.2 ms=1413
+RESULT tessellation PASS mismatch=0 fps=6543.9 ms=1735
+RESULT xfb PASS mismatch=0 fps=0 ms=253
+RESULT pipeline_stats PASS mismatch=0 fps=4598.5 ms=1140
+RESULT vertex_stores PASS mismatch=0 fps=0 ms=100
+RESULT gs_viewport_depth PASS mismatch=0 fps=0 ms=143
+RESULT vs_viewport_index PASS mismatch=0 fps=0 ms=171
+RESULT depth_bounds PASS mismatch=0 fps=0 ms=80
+RESULT large_draw FAIL mismatch=0 fps=0 ms=12055
+RESULT vmr_secondary PASS mismatch=0 fps=0 ms=60
+RESULT tess_cond_state PASS mismatch=0 fps=0 ms=141
+RESULT swapchain_lifecycle PASS mismatch=0 fps=121.3 ms=4410 extra=resized FPS 120.7 | present_main 2474ms, resize 2ms, present_resized 994ms, destroy 0ms, cycle 829ms, teardown 6ms
+AUTORUN DONE pass=16 fail=1 skip=0 total=17 (16 pass / 1 fail / 0 skip)
+AUTORUN ZIP /storage/emulated/0/Android/data/dev.zenithblue.panvktest/files/panprobe-20261006-180227.zip size=76446

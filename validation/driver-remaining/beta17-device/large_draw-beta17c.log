@@ -1,0 +1,41 @@
+MESA: info: kbase: CSF driver, uAPI version 1.21, page_size=4096
+MESA: info: panvk: gpu_id 0xb8a31030 variant 0x4 arch v11 model Mali-G615 texture_features 0xc7fe001e 0 0 0
+MESA: info: panvk: BC emulation on (native compressed mask 0xc7fe001e)
+WARNING: panvk is not a conformant Vulkan implementation, testing use only.
+MESA: warning: No gralloc hwmodule detected (video buffers won't be supported)
+MESA: info: Using fallback gralloc implementation
+ICD device=Mali-G615 MC6 geometryShader=1 fillModeNonSolid=1 multiViewport=1 shaderClipDistance=1 shaderCullDistance=1 maxViewports=16 maxClip=8 maxCull=8 maxCombined=8
+MESA: info: kbase: CSF driver, uAPI version 1.21, page_size=4096
+MESA: info: kbase: mem_alloc via ALLOC_EX
+MESA: info: kbase: queue_group_create layout=32 bytes
+MESA: info: kbase: tiler_heap_init layout=16 bytes
+FEATURES gs=1 tess=1 multiDrawIndirect=1 drawIndirectCount=1 primGenQuery=1
+PASS case points_direct bad=0 bytes=3200000 written=200000 generated=200000
+PASS case points_indirect bad=0 bytes=3200000 written=200000 generated=200000
+PASS case instanced_direct bad=0 bytes=3840000 written=240000 generated=240000
+PASS case instanced_indirect bad=0 bytes=3840000 written=240000 generated=240000
+PASS case strip_direct bad=0 bytes=7199952 written=149999 generated=149999
+PASS case strip_indirect bad=0 bytes=7199952 written=149999 generated=149999
+PASS case restart_direct bad=0 bytes=6684624 written=139263 generated=139263
+PASS case restart_indirect bad=0 bytes=6684624 written=139263 generated=139263
+PASS case gs_restart_direct bad=0 bytes=2228208 written=139263 generated=139263
+PASS case gs_restart_indirect bad=0 bytes=2228208 written=139263 generated=139263
+PASS case fan_direct bad=0 bytes=7199952 written=149999 generated=149999
+PASS case fan_indexed bad=0 bytes=6719952 written=139999 generated=139999
+PASS case fan_instanced bad=0 bytes=480000 written=10000 generated=10000
+PASS case small_inst_direct bad=0 bytes=432000 written=27000 generated=27000
+PASS case small_inst_indirect bad=0 bytes=432000 written=27000 generated=27000
+PASS case cond_skip_indirect bad=0 bytes=0 written=0 generated=0
+PASS case cond_pass_indirect bad=0 bytes=3200000 written=200000 generated=200000
+PASS case cond_skip_tess bad=0 bytes=0 written=0 generated=0
+PASS case gs_direct bad=0 bytes=3200000 written=200000 generated=200000
+PASS case gs_indirect bad=0 bytes=3200000 written=200000 generated=200000
+PASS case tess_direct bad=0 bytes=2240000 written=140000 generated=140000
+PASS case tess_indirect bad=0 bytes=2240000 written=140000 generated=140000
+PASS case tess_instanced bad=0 bytes=288000 written=18000 generated=18000
+PASS case tess_tri_direct bad=0 bytes=3360000 written=70000 generated=70000
+PASS case tess_tri_indirect bad=0 bytes=3360000 written=70000 generated=70000
+PASS case indirect_count bad=0 bytes=2400000 written=150000 generated=150000
+PASS case multi_indirect bad=0 bytes=3840000 written=240000 generated=240000
+XFB_FAILS=0
+RESULT PASS

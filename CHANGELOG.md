@@ -1,5 +1,52 @@
 # Changelog
 
+## g615-v11-csf-v0.1.0-beta.17 (prerelease)
+
+Mesa `5a07217f034b` + the series up to 121. Tested on Poco X6 Pro, Mali-G615 MC6 (v11),
+mali_kbase CSF UAPI 1.21. The universal fixes for v10, v12-v14 and stock ROMs are built but
+not tested on that hardware. Mali v9 stays experimental.
+
+### Fixed (v11, tested on G615)
+
+- GS draws with primitive restart build a strip table instead of walking back per primitive
+  (120). Before, the GS kernel was quadratic and kbase killed the queue group (CSG fault
+  0x41/0x72, then DEVICE_LOST).
+- Viewports with minDepth == maxDepth keep exact depth (121).
+- Depth bounds: a pipeline with the dynamic test off no longer loses its early-ZS path; with
+  EarlyFragmentTests and the test on, the test reads the stored depth (116).
+- FS `gl_PrimitiveID` is kept across viewport runs (115).
+- Attachment-less secondaries split their command streams per sample count (114,
+  `variableMultisampleRate`).
+- Large fans are split, fan/tess instance grids are capped, and chunks skipped by conditional
+  rendering no longer count primitives (112).
+- `vkSetEvent`/`vkResetEvent` never return `VK_ERROR_DEVICE_LOST` (111).
+- X11 software present uses MIT-SHM 1.2 `AttachFd` with sealed memfd segments, with FIFO pacing
+  (117). Falls back to `PutImage`.
+- More kbase and device decisions are logged for tester uploads (118).
+- `driverInfo` reads `PanVK-kbase beta.17`.
+
+### Universal (built, untested on hardware)
+
+- BC is emulated unless all ten BC formats are native (108; G610 and similar).
+- v12+ viewport depth runs; `depthBounds` and `shaderOutputViewportIndex` on v10+ (109).
+- kbase CSF uAPI layouts tried in version order, 16K page support (110); EXEC_INIT before JIT
+  and zones sized in kernel pages on JM (jm-v9/004, 005).
+- `vertexPipelineStoresAndAtomics` on v10-v14 by default (119; FL11_1 for DXVK on v13/v14).
+- Vendor-neutral gralloc mapper discovery, HIDL mapper4 backend and a CPU linear probe for
+  driver-owned swapchain AHBs (android/014, wsi/017), for stock ROMs.
+
+### Validation
+
+- PanProbe 1.2.3 (36 tests) on the Poco: 36/36, three runs; DXVK, Bachata S4 and vkd3d
+  compliance pass.
+- CTS (52725 cases): 32339 pass / 115 fail. Sync + memory gate unchanged vs beta.16.
+
+### Known issues
+
+- 4 dEQP `inverted_depth_ranges.nodepthclamp_deltazero` cases fail since 121.
+- One `VK_ERROR_DEVICE_LOST` in an NFS: Most Wanted attempt (attempt 1), not reproduced in the
+  next run; under investigation.
+
 ## g615-v11-csf-v0.1.0-beta.16 (prerelease)
 
 Mesa `5a07217f034b` + the series up to 107. Tested on Poco X6 Pro, Mali-G615 MC6 (v11),

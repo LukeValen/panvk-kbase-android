@@ -6,9 +6,9 @@
 
 <p align="center">
   <a href="https://t.me/+E-NhUATmkqE5ODg1"><img src="https://img.shields.io/badge/Telegram-Join%20testers-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Join the Telegram testers group"></a>
-  <a href="https://github.com/zenithblue-oss/panvk-kbase-android/releases/tag/g615-v11-csf-v0.1.0-beta.16"><img src="https://img.shields.io/badge/driver-beta.16-orange?style=for-the-badge" alt="Driver beta.16"></a>
-  <a href="https://github.com/zenithblue-oss/panplay/releases/tag/panplay-v1.2.2"><img src="https://img.shields.io/badge/PanPlay-1.2.2-blue?style=for-the-badge&logo=android&logoColor=white" alt="PanPlay 1.2.2"></a>
-  <a href="https://github.com/zenithblue-oss/panprobe/releases/tag/panprobe-v1.2.2"><img src="https://img.shields.io/badge/PanProbe-1.2.2-blue?style=for-the-badge&logo=android&logoColor=white" alt="PanProbe 1.2.2"></a>
+  <a href="https://github.com/zenithblue-oss/panvk-kbase-android/releases/tag/g615-v11-csf-v0.1.0-beta.17"><img src="https://img.shields.io/badge/driver-beta.17-orange?style=for-the-badge" alt="Driver beta.17"></a>
+  <a href="https://github.com/zenithblue-oss/panplay/releases/tag/panplay-v1.2.3"><img src="https://img.shields.io/badge/PanPlay-1.2.3-blue?style=for-the-badge&logo=android&logoColor=white" alt="PanPlay 1.2.3"></a>
+  <a href="https://github.com/zenithblue-oss/panprobe/releases/tag/panprobe-v1.2.3"><img src="https://img.shields.io/badge/PanProbe-1.2.3-blue?style=for-the-badge&logo=android&logoColor=white" alt="PanProbe 1.2.3"></a>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 > [!IMPORTANT]
 > **🧪 Testers wanted!**
 >
-> 1. Install [PanPlay](https://github.com/zenithblue-oss/panplay/releases/tag/panplay-v1.2.2) and play your games.
+> 1. Install [PanPlay](https://github.com/zenithblue-oss/panplay/releases/tag/panplay-v1.2.3) and play your games.
 > 2. After **every** run, whether the game crashed or not, open the session logs screen and tap **Send to cloud** (or **Share as ZIP**).
 > 3. Send the link or ZIP to the **[Telegram testers group](https://t.me/+E-NhUATmkqE5ODg1)**, with the game name, your GPU, the FPS you saw and any glitches.
 
@@ -54,8 +54,8 @@ apps that can load an alternate Vulkan ICD.
 
 | | App | What it is | Download |
 |---|---|---|---|
-| <img src="apps/panvk-launcher/docs/panplay-logo-512.png" width="48" alt="PanPlay logo"> | **PanPlay** (`apps/panvk-launcher`) | Windows game launcher (Wine + DXVK + built-in X server) with the PanVK driver bundled | [PanPlay 1.2.2](https://github.com/zenithblue-oss/panplay/releases/tag/panplay-v1.2.2) · [all releases](https://github.com/zenithblue-oss/panplay/releases) · [repo](https://github.com/zenithblue-oss/panplay) |
-| <img src="apps/panvk-test/docs/panprobe-logo-512.png" width="48" alt="PanProbe logo"> | **PanProbe** (`apps/panvk-test`) | Vulkan feature/extension info and on-device driver tests | [PanProbe 1.2.2](https://github.com/zenithblue-oss/panprobe/releases/tag/panprobe-v1.2.2) · [all releases](https://github.com/zenithblue-oss/panprobe/releases) · [repo](https://github.com/zenithblue-oss/panprobe) |
+| <img src="apps/panvk-launcher/docs/panplay-logo-512.png" width="48" alt="PanPlay logo"> | **PanPlay** (`apps/panvk-launcher`) | Windows game launcher (Wine + DXVK + built-in X server) with the PanVK driver bundled | [PanPlay 1.2.3](https://github.com/zenithblue-oss/panplay/releases/tag/panplay-v1.2.3) · [all releases](https://github.com/zenithblue-oss/panplay/releases) · [repo](https://github.com/zenithblue-oss/panplay) |
+| <img src="apps/panvk-test/docs/panprobe-logo-512.png" width="48" alt="PanProbe logo"> | **PanProbe** (`apps/panvk-test`) | Vulkan feature/extension info and on-device driver tests | [PanProbe 1.2.3](https://github.com/zenithblue-oss/panprobe/releases/tag/panprobe-v1.2.3) · [all releases](https://github.com/zenithblue-oss/panprobe/releases) · [repo](https://github.com/zenithblue-oss/panprobe) |
 
 Both apps are tested on the Mali-G615 only. See [apps/panvk-launcher/docs](apps/panvk-launcher/docs) for launcher usage.
 
@@ -149,13 +149,14 @@ change creates a new release even if the Mesa SHA is unchanged.
 
 ### Current status
 
-Latest: **[`g615-v11-csf-v0.1.0-beta.16`](https://github.com/zenithblue-oss/panvk-kbase-android/releases/tag/g615-v11-csf-v0.1.0-beta.16)**
-(prerelease, Mesa `5a07217f` plus the committed series up to 107 and `jm-v9`). Each
+Latest: **[`g615-v11-csf-v0.1.0-beta.17`](https://github.com/zenithblue-oss/panvk-kbase-android/releases/tag/g615-v11-csf-v0.1.0-beta.17)**
+(prerelease, Mesa `5a07217f` plus the committed series up to 121 and `jm-v9`). Each
 release ships the Android and glibc drivers, an `.adpkg` package, an EMULATOR
 zip, the test APK and screenshots. Full history: [`CHANGELOG.md`](CHANGELOG.md).
 
 | Release | Highlights |
 |---|---|
+| **beta.17** | Correctness and reach. G615: GS draws with primitive restart no longer fault the GPU (120); zero depth-range viewports keep exact depth (121); depth bounds keeps FPK/early ZS while off (116); FS `gl_PrimitiveID` survives viewport runs (115); VMR secondaries (114); prerast fan splits (112); `SetEvent`/`ResetEvent` never return DEVICE_LOST (111); X11 software present over MIT-SHM (117). Universal: BC emulation unless all BC formats are native (108), v12+ viewport depth (109), kbase CSF uAPI layouts and 16K pages (110), vertex stores on v13/v14 (119), vendor-neutral gralloc mapper (android/014). PanProbe 36/36 x3; CTS 32339 pass / 115 fail, sync + memory gate unchanged. Fixes for G610/G720/G925/G1-Ultra and stock ROMs untested on hardware. |
 | **beta.16** | Removes the remaining CPU waits on the v11 kbase path. Software WSI present no longer blocks the app's submit thread until the GPU finishes the frame (106). Up to three retired tiler heaps can be in flight, so `vkQueueSubmit` no longer stalls 35-55 ms on heap backpressure (107). NFS: Most Wanted race: 85.5 to 90.6 fps (DXVK HUD), p99 frame time 22 to 16 ms. NFS is now limited by Wine, not the GPU. CTS sync + memory gate: same 56 failures; PanProbe 17/17. |
 | **beta.15** | Faster kbase submission on v11: no CPU graphics drain on tiler heap renewal (102), same-queue semaphores waited on the GPU (103), next tiler heap created on a worker thread (104). NFS: Most Wanted on G615 goes from 24 to 38-40 fps, p99 frame time 102 to 58 ms, >50 ms frames 650 to ~80. `PANVK_DEBUG=trace` works on kbase again (101, 105). CTS sync + memory: no new failures; PanProbe 17/17. v9 still experimental. Fallout 4 hangs before loading the driver (also on beta.14). |
 | **beta.14** | Adds **EXPERIMENTAL, partly broken** Mali v9 (Valhall JM: G57/G68/G77/G78 class) support to the universal ICD (`jm-v9` series: kbase JM atom submission, v9 backend ported from FristOneRR-Panvk-Source, Vulkan 1.1 reporting). Tested only on Mali-G57 MC2: CTS `api.smoke` 4/6, `simple_draw` 4/4, `synchronization.basic` 21 pass/8 not supported, PanProbe 1/17. v10/v12/v13/v14 untested; v11 was tested on beta.13. `driverInfo` reads `PanVK-kbase beta.14`. |

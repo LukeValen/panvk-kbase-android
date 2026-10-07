@@ -1,15 +1,19 @@
 # Mali v12 (5th-gen CSF) status
 
-All file:line references throughout this document are relative to the Mesa root of the beta.16 tree (Mesa 5a07217f + csf-v11 series up to 107 + jm-v9 001-003), written as `src/panfrost/...:NNN`.
+All file:line references throughout this document are relative to the Mesa root of the beta.16 tree (Mesa 5a07217f + csf-v11 series up to 107 + jm-v9 001-003), written as `src/panfrost/...:NNN`, unless marked "beta.17 tree" (the unreleased beta.17 candidate: beta.16 + csf-v11 108-118 + android/014 + wsi/017 + jm-v9 004-005).
 
 ## Summary
-The Mali v12 (5th-generation Valhall CSF) backend achieved the best non-G615 result in the test suite: PanProbe scores 14/17 on beta.14 on Mali-G720 MC7. The three failing tests are architectural feature gates (`depthBounds`, `shaderOutputViewportIndex`) and missing per-viewport depth runs on v12. Real-world 3D games have not yet been tested under PanPlay or DXVK. Mali-G720 MC7 has been observed; Mali-G620 and Immortalis-G720 belong to the same architecture but remain unseen.
+PanProbe scores 14/17 on the Mali-G720 MC7 (POCO X7 Pro) in six runs: one on beta.14 and five on beta.15 (2026-10-05 and 2026-10-06). Every run fails the same three tests: per-viewport depth runs (`gs_viewport_depth`) and the `depthBounds` and `shaderOutputViewportIndex` gates. The unreleased patch 109 targets all three and has not run on v12 hardware yet. Real-world 3D games have not been tested under PanPlay or DXVK. Mali-G620 and Immortalis-G720 belong to the same architecture but remain unseen.
 
 ## GPUs and devices tested
 
 | Driver build | Anon ID(s) | Device | SoC | GPU | gpu_id -> Mesa model | Kernel | Android | App |
 |---|---|---|---|---|---|---|---|---|
 | beta.14 | `94a3d66c` | 2412DPC0AG (Poco X7 Pro) | MT6899 | Mali-G720 MC7 | `0xc8700010` -> G720 | 6.6 android15 (4 KiB pages) | 16 | PanProbe 1.2.1 |
+| beta.15 | `47011dc2`, `96d408f3`, `8400732a` | 2412DPC0AG (POCO X7 Pro) | MT6899 | Mali-G720 MC7 | `0xc8700010` -> G720 | 6.6.118 android15 (4 KiB pages) | 16 | PanProbe 1.2.2 (14/17) |
+| beta.15 | `da97c873`, `f774eb29` (imported beta.15 .so) | 2412DPC0AG (POCO X7 Pro) | MT6899 | Mali-G720 MC7 | `0xc8700010` -> G720 | 6.6.89 android15 (4 KiB pages) | 16 | PanProbe 1.2.2 (14/17) |
+
+Two kernel builds were seen (6.6.118 and 6.6.89). The uploads cannot tell whether this is one device after an update or two units.
 
 The tested device SoC reports MT6899. The hardware identifier `0xc8700010` decodes to architecture 12.8, product 0, revision r0p1, which matches `PAN_PROD_ID(12,8,0)` v4 for "G720" in `src/panfrost/model/pan_model.c:111`.
 
@@ -48,6 +52,8 @@ The table below contrasts results between Mali-G720 MC7 on beta.14 (`94a3d66c`) 
 | `vmr_secondary` | PASS | PASS | Passes variable multisample rate secondary execution |
 | `tess_cond_state` | PASS | PASS | Passes tessellation conditional rendering |
 | `swapchain_lifecycle` | PASS | PASS | Passes swapchain create, acquire, present, and resize on Android surface |
+
+The five beta.15 runs (`47011dc2`, `96d408f3`, `8400732a`, `da97c873`, `f774eb29`) give the same result: 14/17, the same three failures and the same log lines as `94a3d66c`.
 
 ## Failures and log excerpts
 
@@ -88,13 +94,14 @@ The test terminates immediately because `depthBounds` feature reporting is disab
 - **Depth bounds gate:** `panvk_vX_physical_device.c:330` explicitly restricts depth bounds support to `.depthBounds = PAN_ARCH >= 10 && PAN_ARCH < 12`. Emulation logic (patch 092: `LD_TILE` depth read and sample-masking at `src/panfrost/vulkan/panvk_vX_shader.c:2393` and `src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c:2629`) is implemented for Valhall CSF but has not been validated on v12 hardware.
 - **VS viewport index gate:** `panvk_vX_physical_device.c:443` disables `shaderOutputViewportIndex` on v12+. Viewport-run preparation returns false on v12+ at `src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c:4709-4710`.
 - **Per-viewport depth clamp packaging:** Mali v12 packs depth clamp values directly into the `VIEWPORT` descriptor (`src/panfrost/genxml/v12.xml:1954`). Per-run `LOW/HIGH_DEPTH_CLAMP` register updates from patch 089 are guarded by `#if PAN_ARCH < 12` at `src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c:4388-4390`. Furthermore, run splitting is disabled on v12 at `src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c:4502-4504` (noting that splitting runs would modify index buffers while still clamping to viewport 0; also `:4709`). The driver instead programs the union of all viewports' depth ranges at `src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c:1038` (`panvk_prerast_depth_union`), which causes per-viewport depth tests to fail.
+- **beta.17 status (unreleased, untested on v12):** Patch 109 writes each viewport run's depth range into the v12+ VIEWPORT_LOW min/max depth words (`src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c:1025-1071`, beta.17 tree), enables the run split on v12-v14, and reports `depthBounds` and `shaderOutputViewportIndex` on v10+ (`panvk_vX_physical_device.c:330`, `:443`, beta.17 tree). The depth-bounds emulation (092, refined by 116) has never run on v12 hardware.
 - **Timestamp coherency:** `shaderDeviceClock` is disabled on this device due to lack of kernel timestamp coherency (`src/panfrost/lib/kmod/kbase_kmod.c:430` -> `src/panfrost/vulkan/panvk_vX_physical_device.c:661`), rather than an architectural limitation.
 
 ## What the driver lacks on this arch
 - Per-viewport depth support via packed `VIEWPORT` descriptor fields during run replay.
 - Validated depth-bounds emulation on v12 (`LD_TILE` depth read and sample masking).
 - Vertex/tessellation evaluation shader viewport index run splitting and pipeline preparation on v12+.
-- Untested on v12: beta.15 and beta.16 heap and semaphore management updates (patches 102–107).
+- beta.15 patches 102–105 pass the other 14 PanProbe tests on v12 (five runs). beta.16 patches 106–107 and all beta.17 patches are untested on v12.
 - Untested on v12: PanPlay and DXVK real-world game execution.
 - Untested variants: Mali-G620 and Immortalis-G720.
 
@@ -102,20 +109,21 @@ The test terminates immediately because `depthBounds` feature reporting is disab
 
 | Rank | Item | Effort | Unblocks |
 |---|---|---|---|
-| 1 | PanPlay game run on G720 with beta.16 | Data collection | Validates 3D gaming and patches 102–107 on v12 |
-| 2 | Per-viewport depth runs on v12 (replay ordered runs updating packed VIEWPORT depth fields) | 16–32 h | Fixes `gs_viewport_depth` (PASS) |
-| 3 | Enable `shaderOutputViewportIndex` on v12 (prepare viewport runs) | 4–8 h (after rank 2) | Fixes `vs_viewport_index` (PASS) |
-| 4 | Validate depth-bounds emulation on v12 and lift gate | 8–16 h | Fixes `depth_bounds` (PASS, 17/17 PanProbe) |
+| 1 | PanProbe run on G720 with beta.17 (patch 109 + 116) | Tester rerun | `gs_viewport_depth`, `vs_viewport_index`, `depth_bounds` (17/17 if 109 works) |
+| 2 | PanPlay cube and game runs on G720 | Data collection | Validates DXVK and patches 102–107 on v12 |
+| 3 | If rank 1 fails: debug the per-viewport depth runs (packed VIEWPORT depth fields) | 16–32 h | `gs_viewport_depth` |
+| 4 | If rank 1 fails: debug viewport index runs or depth-bounds emulation on v12 | 4–16 h | `vs_viewport_index`, `depth_bounds` |
 
-The same architectural gates and fixes apply to Mali v13 and v14 (+8–16 h each).
+The same architectural gates and fixes apply to Mali v13 and v14 (+8–16 h each). This is now confirmed on v13: Immortalis-G925 MC12 (Redmi 25060RK16C, MT6991, `0xd8300015` -> G725 row at `src/panfrost/model/pan_model.c:113`, 6.6 android15, Android 15, record `e74f908f`) scores 14/17 on beta.15. It fails the same three tests with the same log lines (`depthL=[0.375000..0.375000] expL=0.250000` in `gs_viewport_depth`, `shaderOutputViewportIndex not reported`, `depthBounds not reported`). BC emulation and the Android swapchain pass, and it exposes 188 extensions, Vulkan 1.4.363 and `queueCount = 2`. A second G925 device (2506BPN68G, `feffc979`) repeats the same 14/17, and its PanPlay cubes run to exit 0 at FL11_0. See [v13/README.md](../v13/README.md). The unreleased patch `patches/csf-v11/109-port-viewport-depth-runs-to-v12-and-lift-gates.patch` targets all three failures. v14 (Mali-G1-Ultra) has not reached these tests yet: `vkCreateDevice` fails there first ([v14/README.md](../v14/README.md)).
 
 ## Open questions / data needed from testers
 - **Hardware variants:** Need `gpu_id` values and variant strings for Immortalis-G720 (MediaTek Dimensity 9300) and Mali-G620.
 - **Third-party launcher behavior (Issue #4):** On a Poco X8 Pro (Dimensity 8500, G720-class), a third-party launcher loaded the vendor system driver (Vulkan 1.3 / 150 extensions) rather than PanVK. A PanProbe test archive is needed from that device to capture PanVK behavior.
-- **Verification of recent series:** Verify whether beta.15/16 patches 102–107 (tiler heap renewal without drain, GPU-side semaphore waits, worker-thread heap creation, trace reset, sw-WSI present-thread fence wait, three retired tiler heaps) work on v12 hardware.
+- **Verification of recent series:** beta.15 (102–105) passes PanProbe on v12. beta.16 (106–107) and beta.17 still need a v12 run, ideally with a PanPlay cube.
 
 ## Links
 - [Universal Mali status](../README.md)
+- [Tested devices](../DEVICES.md)
 - [Viewport Clamp Worklog](../../../worklogs/driver-remaining/089-viewport-clamp.md)
 - [VS Viewport Index Worklog](../../../worklogs/driver-remaining/090-vs-viewport-index.md)
 - [Depth Bounds Worklog](../../../worklogs/driver-remaining/092-depth-bounds.md)

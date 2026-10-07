@@ -1,0 +1,254 @@
+libc: Access denied finding property "vendor.mesa.panvk.debug"
+libc: Access denied finding property "vendor.mesa.pan.cpu.trace"
+libc: Access denied finding property "vendor.mesa.vk.version.override"
+libc: Access denied finding property "vendor.mesa.vk.trace"
+libc: Access denied finding property "vendor.mesa.vk.trace.per.submit"
+libc: Access denied finding property "vendor.mesa.gallium.print.options"
+libc: Access denied finding property "vendor.mesa.vk.trace.frame"
+libc: Access denied finding property "vendor.mesa.vk.trace.trigger"
+libc: Access denied finding property "vendor.mesa.force.vk.vendor"
+libc: Access denied finding property "vendor.mesa.force.vk.devicename"
+libc: Access denied finding property "vendor.mesa.vk.wsi.force.bgra8.unorm.first"
+libc: Access denied finding property "vendor.mesa.vk.wsi.force.swapchain.to.current.extent"
+libc: Access denied finding property "vendor.mesa.vk.wsi.disable.unordered.submits"
+libc: Access denied finding property "vendor.mesa.vk.x11.ignore.suboptimal"
+libc: Access denied finding property "vendor.mesa.adaptive.sync"
+libc: Access denied finding property "vendor.mesa.vk.x11.override.min.image.count"
+libc: Access denied finding property "vendor.mesa.vk.x11.strict.image.count"
+libc: Access denied finding property "vendor.mesa.vk.x11.ensure.min.image.count"
+libc: Access denied finding property "vendor.mesa.vk.google.display.timing"
+libc: Access denied finding property "vendor.mesa.pan.compute.core.mask"
+libc: Access denied finding property "vendor.mesa.pan.fragment.core.mask"
+libc: Access denied finding property "vendor.mesa.pan.enable.vertex.pipeline.stores.atomics"
+libc: Access denied finding property "vendor.mesa.pan.force.enable.shader.atomics"
+libc: Access denied finding property "vendor.mesa.heap.memory.percent"
+libc: Access denied finding property "vendor.mesa.driconf.executable.override"
+libc: Access denied finding property "vendor.mesa.process.name"
+libc: Access denied finding property "vendor.mesa.log.level"
+libc: Access denied finding property "vendor.mesa.log.prefix"
+libc: Access denied finding property "vendor.mesa.log.file.auto"
+libc: Access denied finding property "vendor.mesa.log.file"
+MESA: info: kbase: CSF driver, uAPI version 1.21, page_size=4096
+libc: Access denied finding property "vendor.mesa.panvk.kbase.dvfs"
+MESA: info: panvk: gpu_id 0xb8a31030 variant 0x4 arch v11 model Mali-G615 texture_features 0xc7fe001e 0 0 0
+MESA: info: panvk: BC emulation on (native compressed mask 0xc7fe001e)
+libc: Access denied finding property "vendor.mesa.vk.ignore.conformance.warning"
+WARNING: panvk is not a conformant Vulkan implementation, testing use only.
+MESA: warning: No gralloc hwmodule detected (video buffers won't be supported)
+MESA: info: Using fallback gralloc implementation
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.debug"
+libc: Access denied finding property "vendor.mesa.disk.cache.single.file"
+libc: Access denied finding property "vendor.mesa.disk.cache.database"
+libc: Access denied finding property "vendor.mesa.disk.cache.multi.file"
+libc: Access denied finding property "vendor.mesa.shader.cache.max.size"
+libc: Access denied finding property "vendor.mesa.glsl.cache.max.size"
+libc: Access denied finding property "vendor.mesa.shader.cache.disable"
+libc: Access denied finding property "vendor.mesa.vk.version.override"
+libc: Access denied finding property "vendor.mesa.vk.wsi.debug"
+libc: Access denied finding property "vendor.mesa.vk.wsi.present.mode"
+libc: Access denied finding property "vendor.mesa.vk.wsi.headless.swapchain"
+ICD device=Mali-G615 MC6 geometryShader=1 fillModeNonSolid=1 multiViewport=1 shaderClipDistance=1 shaderCullDistance=1 maxViewports=16 maxClip=8 maxCull=8 maxCombined=8
+MESA: info: kbase: CSF driver, uAPI version 1.21, page_size=4096
+MESA: info: kbase: mem_alloc via ALLOC_EX
+libc: Access denied finding property "vendor.mesa.vk.enable.pipeline.cache"
+MESA: info: kbase: queue_group_create layout=32 bytes
+MESA: info: kbase: tiler_heap_init layout=16 bytes
+libc: Access denied finding property "vendor.mesa.gpu.traces"
+libc: Access denied finding property "vendor.mesa.gpu.tracefile"
+libc: Access denied finding property "vendor.mesa.panvk.utrace.clone.mem.size"
+FEATURES gs=1 tess=1 multiDrawIndirect=1 drawIndirectCount=1 primGenQuery=1
+libc: Access denied finding property "vendor.mesa.spirv.debug"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.force.unstructured"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.vk.validate.shader.binaries"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.panvk.kbase.heap.renew.work"
+libc: Access denied finding property "vendor.mesa.panvk.kbase.heap.renew.interval"
+libc: Access denied finding property "vendor.mesa.vk.max.timeout"
+PASS case points_direct bad=0 bytes=3200000 written=200000 generated=200000
+PASS case points_indirect bad=0 bytes=3200000 written=200000 generated=200000
+PASS case instanced_direct bad=0 bytes=3840000 written=240000 generated=240000
+PASS case instanced_indirect bad=0 bytes=3840000 written=240000 generated=240000
+PASS case strip_direct bad=0 bytes=7199952 written=149999 generated=149999
+PASS case strip_indirect bad=0 bytes=7199952 written=149999 generated=149999
+PASS case restart_direct bad=0 bytes=6684624 written=139263 generated=139263
+PASS case restart_indirect bad=0 bytes=6684624 written=139263 generated=139263
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+PASS case gs_restart_direct bad=0 bytes=2228208 written=139263 generated=139263
+MESA: error: kbase: CSF group 0 CSI 0 fatal error: status 0x00000041 (exception 0x41), sideband 0x0000000000000000
+MESA: error: kbase: timeout on subqueue 0: seqno 11, ls_copy 0, target 12, marks pre/post-call/post-wait 0x0/0x0/0x0, stream progress 0x0, insert 2304, extract 2256, active 0, error 0x0, ring[0..3] 0x1c00000000000003/0x1c00000900000008/0x1c00000100000000/0x1c00000200000001
+MESA: error: kbase: last job on subqueue 0: ring offset 2112, entry 192/192 bytes, stream 0x5ff5399000/760, flush 36478, extract offset 2256
+MESA: error: kbase: last ring[0..15] 0x1c00000000000003/0x1c00000900000008/0x1c00000100000000/0x1c00000200000001/0x1c0000080000fff0/0x220000000000000c/0x15a005ffff9f340/0x15c006000000080/0x30005c0000000000/0x15c005ffff9f370/0x15e005ffffa3040/0x155e5c0000030000/0x300000000010000/0x25e000000008e7e/0x24005e0000000233/0x300000000010000
+MESA: error: kbase: extract line ring[0..7] 0x15c005ff5399000/0x25e0000000002f8/0x20005c5e00000000/0x15c005ffff9d000/0x3000000ffff0000/0x15e000000000001/0x33005c5e00000001/0x2f00000000000000
+MESA: error: kbase: queue syncobj 0: seqno 19, error 0x0, pad 0x0
+MESA: error: kbase: queue syncobj 1: seqno 19, error 0x0, pad 0x0
+MESA: error: kbase: queue syncobj 2: seqno 15, error 0x0, pad 0x0
+MESA: error: kbase: timeout snapshot subqueue 0: seqno 11, ls_copy 0, target 12, marks 0x0/0x0/0x0, insert 2304, extract 2256, active 0, error 0x0, jobs 12
+MESA: error: kbase: timeout snapshot subqueue 0 stream progress 0x0
+MESA: error: kbase: timeout snapshot subqueue 0 last job: ring offset 2112, entry 192/192 bytes, stream 0x5ff5399000/760, flush 36478
+MESA: error: kbase: subqueue 0 extract ring[0..7] @2240 0x15c005ff5399000/0x25e0000000002f8/0x20005c5e00000000/0x15c005ffff9d000/0x3000000ffff0000/0x15e000000000001/0x33005c5e00000001/0x2f00000000000000
+MESA: error: kbase: subqueue 0 last-job ring[0..7] @2112 0x1c00000000000003/0x1c00000900000008/0x1c00000100000000/0x1c00000200000001/0x1c0000080000fff0/0x220000000000000c/0x15a005ffff9f340/0x15c006000000080
+MESA: error: kbase: timeout snapshot subqueue 1: seqno 11, ls_copy 0, target 12, marks 0x0/0x0/0x0, insert 2304, extract 2256, active 0, error 0x0, jobs 12
+MESA: error: kbase: timeout snapshot subqueue 1 stream progress 0x0
+MESA: error: kbase: timeout snapshot subqueue 1 last job: ring offset 2112, entry 192/192 bytes, stream 0x5ff53d4000/1056, flush 36478
+MESA: error: kbase: subqueue 1 extract ring[0..7] @2240 0x15c005ff53d4000/0x25e000000000420/0x20005c5e00000000/0x15c005ffff9d040/0x3000000ffff0000/0x15e000000000001/0x33005c5e00000001/0x2f00000000000000
+MESA: error: kbase: subqueue 1 last-job ring[0..7] @2112 0x1c00000000000003/0x1c00000900000008/0x1c00000100000000/0x1c00000200000001/0x1c0000080000fff0/0x2200000000000002/0x15a005ffffa0580/0x15c006000000080
+MESA: error: kbase: timeout snapshot subqueue 2: seqno 11, ls_copy 0, target 12, marks 0x0/0x0/0x0, insert 2304, extract 2208, active 1, error 0x0, jobs 12
+MESA: error: kbase: timeout snapshot subqueue 2 stream progress 0x0
+MESA: error: kbase: timeout snapshot subqueue 2 last job: ring offset 2112, entry 144/192 bytes, stream 0x5ff53e4000/3256, flush 36478
+MESA: error: kbase: subqueue 2 extract ring[0..7] @2176 0x24005e0000000233/0x300000000010000/0x15c005ff53e4000/0x25e000000000cb8/0x20005c5e00000000/0x15c005ffff9d080/0x3000000ffff0000/0x15e000000000001
+MESA: error: kbase: subqueue 2 last-job ring[0..7] @2112 0x1c00000000000003/0x1c00000900000008/0x1c00000100000000/0x1c00000200000001/0x1c0000080000fff0/0x2200000000000001/0x15a005ffffa1740/0x25e000000008e7e
+libc: Access denied finding property "vendor.mesa.vk.abort.on.device.loss"
+FAIL wait for fence r=-4
+  hang: last non-zero record 66532 of 139327
+FAIL case gs_restart_indirect did not complete
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 450061
+FAIL case fan_direct did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 420061
+FAIL case fan_indexed did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 30064
+FAIL case fan_instanced did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 27064
+FAIL case small_inst_direct did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 27064
+FAIL case small_inst_indirect did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 200064
+FAIL case cond_skip_indirect did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 200064
+FAIL case cond_pass_indirect did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 140064
+FAIL case cond_skip_tess did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 200064
+FAIL case gs_direct did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 200064
+FAIL case gs_indirect did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 140064
+FAIL case tess_direct did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 140064
+FAIL case tess_indirect did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 18064
+FAIL case tess_instanced did not complete
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.spirv.dump.path"
+libc: Access denied finding property "vendor.mesa.spirv.read.path"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+libc: Access denied finding property "vendor.mesa.bifrost.mesa.dump.dir"
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 210064
+FAIL case tess_tri_direct did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 210064
+FAIL case tess_tri_indirect did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 300064
+FAIL case indirect_count did not complete
+FAIL QueueSubmit r=-4
+  hang: last non-zero record 0 of 240064
+FAIL case multi_indirect did not complete
+XFB_FAILS=18
+RESULT FAIL
