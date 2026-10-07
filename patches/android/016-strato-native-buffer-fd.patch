@@ -1,0 +1,82 @@
+From: LukeValen Strato Mali contributors
+Subject: [PATCH] vulkan/android: find the compatible native-buffer dma-buf
+
+Base: zenithblue-oss beta.17 b4ee2e2490ffad0e6625ecbd78ef016bdf6cf5ce,
+Mesa 5a07217f034b3e50d8c7c7794f97a2df1742613b.
+
+The upstream AHB fd discovery does not cover vk_android_import_anb_memory.
+Probe the handle fds for the Android HAL loader path used by Strato. Preserve
+single real import, existing dup/ownership handling, and non-handle errors.
+No changes to shaders, feature exposure, fences, GPU waits or queue execution.
+Validated by tests/test_strato_anb.py against the patched production function.
+
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -213,30 +213,49 @@
+                              const VkNativeBufferANDROID *anb,
+                              const VkAllocationCallbacks *alloc)
+ {
+-   assert(anb && anb->handle && anb->handle->numFds > 0);
+-
+-   int dma_buf_fd = anb->handle->data[0];
++   if (!anb || !anb->handle || anb->handle->numFds <= 0)
++      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
++
++   int dma_buf_fd = -1;
+ 
+    /* Query image memory requirements for size and supported memory types */
+    VkMemoryRequirements mem_reqs;
+    device->dispatch_table.GetImageMemoryRequirements(
+       (VkDevice)device, (VkImage)image, &mem_reqs);
+ 
+-   VkMemoryFdPropertiesKHR fd_props = {
+-      .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR,
+-   };
+-   VkResult result = device->dispatch_table.GetMemoryFdPropertiesKHR(
+-      (VkDevice)device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+-      dma_buf_fd, &fd_props);
+-   if (result != VK_SUCCESS) {
+-      mesa_loge("GetMemoryFdPropertiesKHR failed");
+-      return result;
+-   }
+-
+-   uint32_t compatible_types = mem_reqs.memoryTypeBits & fd_props.memoryTypeBits;
+-   if (!compatible_types) {
+-      mesa_loge("No compatible AHB mem types (img_reqs=%#b,fd_reqs=%#b)",
+-                 mem_reqs.memoryTypeBits, fd_props.memoryTypeBits);
++   /* Android HAL clients (including Strato through the Android loader) pass
++    * VkNativeBufferANDROID, not the driver's own AHardwareBuffer swapchain.
++    * MediaTek handles can put metadata/fence fds before the dma-buf. Match
++    * the existing AHB path: reject empty/non-seekable fds, then query memory
++    * types without transient GPU imports (important for kbase VA lifetime).
++    */
++   VkResult result;
++   uint32_t compatible_types = 0;
++   for (int i = 0; i < anb->handle->numFds; i++) {
++      const int fd = anb->handle->data[i];
++      if (fd < 0 || lseek(fd, 0, SEEK_END) <= 0)
++         continue;
++
++      VkMemoryFdPropertiesKHR fd_props = {
++         .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR,
++      };
++      result = device->dispatch_table.GetMemoryFdPropertiesKHR(
++         (VkDevice)device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++         fd, &fd_props);
++      if (result == VK_ERROR_INVALID_EXTERNAL_HANDLE)
++         continue;
++      if (result != VK_SUCCESS)
++         return result;
++
++      compatible_types = mem_reqs.memoryTypeBits & fd_props.memoryTypeBits;
++      if (!compatible_types)
++         continue;
++
++      dma_buf_fd = fd;
++      break;
++   }
++   if (dma_buf_fd < 0) {
++      mesa_loge("No compatible dma-buf in Android native buffer handle");
+       return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+    }
+ 

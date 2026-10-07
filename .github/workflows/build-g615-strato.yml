@@ -1,0 +1,48 @@
+name: Build PanVK Beta 17 for Strato
+on:
+  push:
+    branches: [strato-beta17]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm-20-dev libclang-20-dev libclc-20-dev libllvmspirvlib-20-dev libelf-dev spirv-tools bison flex libdrm-dev libudev-dev pkg-config libx11-xcb-dev libxcb-dri3-dev libxcb-present-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev
+          python3 -m pip install meson ninja mako PyYAML packaging
+      - name: Fetch pinned Mesa and apply only beta17 plus Strato ANB correction
+        run: |
+          ./scripts/fetch-mesa.sh
+          ./scripts/apply-patches.sh --profile g615-v11-csf
+      - name: Test native-buffer import and FD ownership
+        run: python3 tests/test_strato_anb.py
+      - name: Prepare isolated Android dependencies
+        run: mkdir -p work/android-deps/lib/pkgconfig
+      - name: Build Android driver with upstream toolchain scripts
+        env:
+          ANDROID_API: "35"
+        run: ./scripts/build-android.sh --profile g615-v11-csf --api 35 --ndk "$ANDROID_NDK_LATEST_HOME"
+      - name: Validate ELF and package driver
+        run: |
+          ./scripts/validate-binary.sh --abi android dist/android-g615-v11-csf/libvulkan_panfrost.so
+          python3 scripts/package-strato-beta17.py
+      - name: Upload Strato beta17 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanVK-G615-Strato-Beta17-ANB1
+          path: dist/strato-beta17/*
+          if-no-files-found: error
+      - name: Upload compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta17-build-diagnostics
+          path: |
+            build/*.log
+            build/**/meson-logs/meson-log.txt
+          if-no-files-found: ignore
