@@ -376,6 +376,16 @@ fun buildUploadRecord(
     val glExtra = JSONObject()
     putText("glVendor", gpu?.opt("glVendor"), target = glExtra)
     putText("glVersion", gpu?.opt("glVersion"), target = glExtra)
+    // Compliance verdicts (full item lists stay in the zip: vulkan-info.json, <run>/compliance.json).
+    manifest.optJSONObject("compliance")?.let { c ->
+        val v = JSONObject()
+        for (k in c.keys()) c.optJSONObject(k)?.let { r ->
+            v.put(k, JSONObject().put("pass", r.optBoolean("pass")).put("missingHard", r.opt("missingHard") ?: JSONObject.NULL))
+        }
+        glExtra.put("compliance", v)
+        // Worker caps extra_json at 2048 chars: drop the name lists before dropping the verdicts.
+        if (glExtra.toString().length > 2048) for (k in v.keys()) v.getJSONObject(k).remove("missingHard")
+    }
     if (glExtra.length() > 0) record.put("extra_json", glExtra)
     val driver = manifest.optJSONObject("driver")
     putText("driver_name", driver?.opt("driverName"))

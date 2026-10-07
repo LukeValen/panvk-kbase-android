@@ -85,8 +85,30 @@ data class DeviceInfo(
 
 data class ParsedVulkanInfo(
     val instanceExtensions: List<ExtensionItem>,
-    val devices: List<DeviceInfo>
+    val devices: List<DeviceInfo>,
+    val compliance: List<ComplianceReport> = emptyList()
 )
+
+data class ComplianceItem(val name: String, val hard: Boolean, val available: Boolean, val note: String?,
+                          val testedBy: List<String> = emptyList())
+
+/** One requirement checker result (see [parseComplianceLog]); [pass] = no hard item missing and RESULT PASS. */
+data class ComplianceReport(val title: String, val pass: Boolean, val status: String, val items: List<ComplianceItem>, val info: List<String>)
+
+fun parseComplianceReport(o: JSONObject): ComplianceReport {
+    val arr = o.optJSONArray("items") ?: JSONArray()
+    val items = (0 until arr.length()).map { i ->
+        val it = arr.getJSONObject(i)
+        ComplianceItem(
+            it.optString("name"), it.optString("category") == "hard", it.optString("status") == "available",
+            it.optString("note").takeIf { n -> n.isNotEmpty() },
+            it.optJSONArray("tested_by")?.let { a -> (0 until a.length()).map { j -> a.optString(j) } }
+                ?: testedBy(it.optString("name"))
+        )
+    }
+    val info = o.optJSONArray("info")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+    return ComplianceReport(o.optString("title"), o.optBoolean("pass"), o.optString("status"), items, info)
+}
 
 // ============================================================================
 // Format Feature Flag Bit Definitions and Decoder
@@ -425,9 +447,11 @@ fun parseVulkanInfo(json: JSONObject): ParsedVulkanInfo {
         }
     }
 
+    val complianceObj = json.optJSONObject("compliance")
     return ParsedVulkanInfo(
         instanceExtensions = instExts,
-        devices = devList
+        devices = devList,
+        compliance = COMPLIANCE_CHECKERS.mapNotNull { (key) -> complianceObj?.optJSONObject(key)?.let(::parseComplianceReport) }
     )
 }
 
@@ -602,6 +626,7 @@ fun VulkanInfoLazyList(info: ParsedVulkanInfo, glInfo: GlInfo? = null) {
     var featuresExpanded by remember { mutableStateOf(false) }
     var limitsExpanded by remember { mutableStateOf(false) }
     var formatsExpanded by remember { mutableStateOf(false) }
+    val complianceExpanded = remember { mutableStateMapOf<Int, Boolean>() }
 
     // Feature struct sub-group expanded states
     val groupExpandedMap = remember { mutableStateMapOf<String, Boolean>() }
@@ -655,6 +680,53 @@ fun VulkanInfoLazyList(info: ParsedVulkanInfo, glInfo: GlInfo? = null) {
                             text = "No Vulkan physical devices found.",
                             style = MaterialTheme.typography.bodyMedium
                         )
+                    }
+                }
+            }
+        }
+
+        // 1b. Compliance sections (DXVK 3.1.1, Bachata S4): PASS/FAIL header, hard/soft missing/available lists.
+        info.compliance.forEachIndexed { ci, rep ->
+            val expanded = complianceExpanded[ci] ?: false
+            val hardItems = rep.items.filter { it.hard }
+            val softItems = rep.items.filter { !it.hard }
+            item(key = "compliance_header_$ci") {
+                SectionHeaderCard(
+                    title = rep.title,
+                    countDetail = "${if (rep.pass) "PASS" else "FAIL"} · hard ${hardItems.count { it.available }}/${hardItems.size}" +
+                        " · soft ${softItems.count { it.available }}/${softItems.size}",
+                    tone = if (rep.pass) Tone.Ok else Tone.Error,
+                    isExpanded = expanded,
+                    onToggle = { complianceExpanded[ci] = !expanded }
+                )
+            }
+            if (expanded) {
+                val lines = rep.info + listOfNotNull(rep.status.takeIf { !rep.pass && hardItems.none { !it.available } })
+                if (lines.isNotEmpty()) item(key = "compliance_info_$ci") {
+                    Text(
+                        text = lines.joinToString("\n"),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                listOf(
+                    "Hard: not available" to hardItems.filter { !it.available },
+                    "Hard: available" to hardItems.filter { it.available },
+                    "Soft: not available" to softItems.filter { !it.available },
+                    "Soft: available" to softItems.filter { it.available }
+                ).forEach { (label, group) ->
+                    item(key = "compliance_${ci}_$label") {
+                        Text(
+                            text = "$label (${group.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 8.dp, top = 6.dp)
+                        )
+                    }
+                    itemsIndexed(items = group, key = { i, it -> "compliance_${ci}_${label}_${it.name}_$i" }) { _, it ->
+                        ComplianceRow(it)
                     }
                 }
             }
@@ -899,6 +971,7 @@ fun SectionHeaderCard(
     title: String,
     count: Int? = null,
     countDetail: String? = null,
+    tone: Tone = Tone.Neutral,
     isExpanded: Boolean,
     onToggle: () -> Unit
 ) {
@@ -940,7 +1013,7 @@ fun SectionHeaderCard(
                 else -> null
             }
             if (badgeText != null) {
-                StatusPill(text = badgeText, tone = Tone.Neutral)
+                StatusPill(text = badgeText, tone = tone)
             }
         }
     }
@@ -1252,6 +1325,41 @@ fun FeatureRow(feature: FeatureItem) {
         StatusPill(
             text = if (feature.supported) "YES" else "NO",
             tone = if (feature.supported) Tone.Ok else Tone.Neutral
+        )
+    }
+}
+
+@Composable
+fun ComplianceRow(item: ComplianceItem) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = item.name, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            Text(
+                text = if (item.testedBy.isEmpty()) "reported only" else "GPU-tested: ${item.testedBy.joinToString(", ")}",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (item.testedBy.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+            )
+            if (!item.available && item.note != null) {
+                Text(
+                    text = item.note,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        StatusPill(
+            text = if (item.available) "YES" else "MISSING",
+            tone = when {
+                item.available -> Tone.Ok
+                item.hard -> Tone.Error
+                else -> Tone.Warn
+            }
         )
     }
 }

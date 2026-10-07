@@ -78,7 +78,7 @@ enum class Tone { Neutral, Ok, Warn, Error, Accent }
 fun testStatusTone(status: String): Tone = when (status) {
     "PASS" -> Tone.Ok
     "FAIL", "CRASH" -> Tone.Error
-    "TIMEOUT" -> Tone.Warn
+    "TIMEOUT", "SKIP" -> Tone.Warn
     "RUNNING" -> Tone.Accent
     else -> Tone.Neutral
 }

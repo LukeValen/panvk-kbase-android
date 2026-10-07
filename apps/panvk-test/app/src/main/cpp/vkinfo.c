@@ -44,6 +44,15 @@ static bool dev_has_extension(const VkExtensionProperties *exts, uint32_t count,
     return false;
 }
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL
+vk_debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugUtilsMessageTypeFlagsEXT type,
+            const VkDebugUtilsMessengerCallbackDataEXT *data, void *user) {
+    (void)type; (void)user;
+    fprintf(stderr, "VKDBG sev=0x%x %s\n", (unsigned)sev,
+            data && data->pMessage ? data->pMessage : "");
+    return VK_FALSE;
+}
+
 typedef struct {
     const VkFeatureStructDesc *desc;
     void *ptr;
@@ -114,8 +123,16 @@ int main(int argc, char **argv) {
         inst_api_version = VK_MAKE_API_VERSION(0, 1, 0, 0);
     }
 
-    const char *enabled_inst_exts[1];
+    const char *enabled_inst_exts[2];
     uint32_t enabled_inst_ext_count = 0;
+    /* Release Mesa drops vk_errorf text (e.g. "Unknown gpu_id") unless a
+     * messenger exists; enable debug_utils so it lands in our stderr log. */
+    for (uint32_t i = 0; i < inst_ext_count; i++) {
+        if (strcmp(inst_exts[i].extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+            enabled_inst_exts[enabled_inst_ext_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+            break;
+        }
+    }
     for (uint32_t i = 0; i < inst_ext_count; i++) {
         if (strcmp(inst_exts[i].extensionName, "VK_KHR_get_physical_device_properties2") == 0) {
             enabled_inst_exts[enabled_inst_ext_count++] = "VK_KHR_get_physical_device_properties2";
@@ -146,9 +163,28 @@ int main(int argc, char **argv) {
     }
 
     if (res != VK_SUCCESS || instance == VK_NULL_HANDLE) {
+        fprintf(stderr, "FAIL vkCreateInstance r=%d\n", res);
         printf("]}\n");
         if (inst_exts) free(inst_exts);
         return 1;
+    }
+
+    PFN_vkCreateDebugUtilsMessengerEXT pfn_vkCreateDebugUtilsMessengerEXT =
+        (inst_info.enabledExtensionCount && !strcmp(enabled_inst_exts[0], VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) ?
+        (PFN_vkCreateDebugUtilsMessengerEXT)gipa(instance, "vkCreateDebugUtilsMessengerEXT") : NULL;
+    VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
+    if (pfn_vkCreateDebugUtilsMessengerEXT) {
+        VkDebugUtilsMessengerCreateInfoEXT mci;
+        memset(&mci, 0, sizeof(mci));
+        mci.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        mci.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                              VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                              VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+        mci.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                          VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                          VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+        mci.pfnUserCallback = vk_debug_cb;
+        pfn_vkCreateDebugUtilsMessengerEXT(instance, &mci, NULL, &messenger);
     }
 
     PFN_vkEnumeratePhysicalDevices pfn_vkEnumeratePhysicalDevices =
@@ -392,6 +428,9 @@ int main(int argc, char **argv) {
     if (phys_devices) free(phys_devices);
     if (inst_exts) free(inst_exts);
     if (pfn_vkDestroyInstance && instance != VK_NULL_HANDLE) {
+        PFN_vkDestroyDebugUtilsMessengerEXT pfn_destroy_msgr = messenger ?
+            (PFN_vkDestroyDebugUtilsMessengerEXT)gipa(instance, "vkDestroyDebugUtilsMessengerEXT") : NULL;
+        if (pfn_destroy_msgr) pfn_destroy_msgr(instance, messenger, NULL);
         pfn_vkDestroyInstance(instance, NULL);
     }
 

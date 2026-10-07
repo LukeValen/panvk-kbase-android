@@ -207,3 +207,28 @@ JNIEXPORT jstring JNICALL Java_dev_zenithblue_panvktest_Native_run(
 
     return (*env)->NewStringUTF(env, retbuf);
 }
+
+/* kbase uAPI version from a throwaway /dev/mali0 fd. VERSION_CHECK must be the
+ * first ioctl; CSF uses nr 52, JM nr 0 (each rejects the other). Returns
+ * "CSF 1.21", "JM 11.0", or "none: <reason>". */
+#include <sys/ioctl.h>
+struct pt_kbase_version_check { unsigned short major, minor; };
+JNIEXPORT jstring JNICALL Java_dev_zenithblue_panvktest_Native_kbaseVersion(JNIEnv *env, jclass clazz)
+{
+    char buf[96];
+    int fd = open("/dev/mali0", O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+        snprintf(buf, sizeof(buf), "none: open /dev/mali0: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, buf);
+    }
+    struct pt_kbase_version_check v = { 0, 0 };
+    if (ioctl(fd, _IOWR(0x80, 52, struct pt_kbase_version_check), &v) == 0)
+        snprintf(buf, sizeof(buf), "CSF %u.%u", v.major, v.minor);
+    else if ((v = (struct pt_kbase_version_check){ 0, 0 }),
+             ioctl(fd, _IOWR(0x80, 0, struct pt_kbase_version_check), &v) == 0)
+        snprintf(buf, sizeof(buf), "JM %u.%u", v.major, v.minor);
+    else
+        snprintf(buf, sizeof(buf), "none: VERSION_CHECK: %s", strerror(errno));
+    close(fd);
+    return (*env)->NewStringUTF(env, buf);
+}
