@@ -1,0 +1,21 @@
+#version 460
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer NullBuf {
+    uint values[];
+} null_buf;
+
+layout(set = 0, binding = 1, std430) buffer OutBuf {
+    uint values[];
+} out_buf;
+
+layout(set = 0, binding = 2, std430) readonly buffer RealBuf {
+    uint values[];
+} real_buf;
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    out_buf.values[gid * 2u] = null_buf.values[gid];
+    out_buf.values[gid * 2u + 1u] = real_buf.values[1000u];
+}

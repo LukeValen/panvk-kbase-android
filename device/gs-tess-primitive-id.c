@@ -452,6 +452,7 @@ check_ids(const char *name, const uint32_t *rb, uint32_t patches,
       printf("FAIL %s count\n", name);
       return 1;
    }
+#ifndef PT_COMPAT_H /* PanProbe build: no /tmp on Android, HIST below suffices */
    char path[128];
    snprintf(path, sizeof(path), "/tmp/088-ids-%s.bin", name);
    int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
@@ -466,6 +467,7 @@ check_ids(const char *name, const uint32_t *rb, uint32_t patches,
       return 1;
    }
    close(fd);
+#endif
 
    uint32_t *full = calloc(patches, sizeof(uint32_t));
    if (!full)
@@ -520,6 +522,7 @@ main(int argc, char **argv)
       fclose(stf);
    }
    printf("READY\n");
+#ifndef PT_COMPAT_H /* PanProbe build (pt_compat.h): no runner gate */
    char gate[64];
    snprintf(gate, sizeof(gate), "/tmp/088-go-%d", (int)getpid());
    for (;;) {
@@ -528,6 +531,7 @@ main(int argc, char **argv)
       struct timespec d = {.tv_nsec = 50000000};
       nanosleep(&d, NULL);
    }
+#endif
    stamp("go");
    {
       double up = 0;
@@ -600,8 +604,13 @@ main(int argc, char **argv)
           f2.features.vertexPipelineStoresAndAtomics, v13.synchronization2);
    if (!f2.features.tessellationShader || !f2.features.geometryShader ||
        !f2.features.vertexPipelineStoresAndAtomics || !v13.synchronization2) {
+#ifdef PT_COMPAT_H
+      printf("SKIP required feature missing\nRESULT SKIP\n");
+      return 0;
+#else
       printf("FAIL required feature missing\n");
       return 1;
+#endif
    }
 
    uint32_t qn = 0;

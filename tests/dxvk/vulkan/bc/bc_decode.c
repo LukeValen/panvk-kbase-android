@@ -210,6 +210,10 @@ main(int argc, char **argv)
       return 1;
    }
    gipa = (icd_gipa_fn)dlsym(h, "vk_icdGetInstanceProcAddr");
+   if (!gipa) {
+      printf("FAIL no vk_icdGetInstanceProcAddr in %s\n", argv[1]);
+      return 1;
+   }
    PFN_vkCreateInstance vkCreateInstance =
       (PFN_vkCreateInstance)gipa(NULL, "vkCreateInstance");
    VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -229,7 +233,12 @@ main(int argc, char **argv)
 
    uint32_t n = 8;
    VkPhysicalDevice devs[8];
-   CK(vkEnumeratePhysicalDevices(inst, &n, devs), "enum");
+   VkResult er = vkEnumeratePhysicalDevices(inst, &n, devs);
+   if ((er != VK_SUCCESS && er != VK_INCOMPLETE) || n == 0) {
+      /* No Mali/kbase device (or rejected gpu_id): devs[0] is garbage. */
+      printf("FAIL no physical device (r=%d n=%u)\n", er, n);
+      return 1;
+   }
    VkPhysicalDevice phys = devs[0];
    VkPhysicalDeviceProperties props;
    vkGetPhysicalDeviceProperties(phys, &props);

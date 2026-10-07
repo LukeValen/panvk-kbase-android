@@ -734,6 +734,7 @@ main(int argc, char **argv)
       fclose(stf);
    }
    printf("READY\n");
+#ifndef PT_COMPAT_H /* PanProbe build (pt_compat.h): no runner gate */
    /* Real fifo (mknod p). Blocks until the runner has stamped maps. */
    int go = open("/tmp/085-go", O_RDONLY);
    if (go < 0) {
@@ -746,6 +747,7 @@ main(int argc, char **argv)
       return 1;
    }
    close(go);
+#endif
    stamp("go");
 
    icd_gipa_fn gipa = (icd_gipa_fn)dlsym(h, "vk_icdGetInstanceProcAddr");
@@ -803,8 +805,13 @@ main(int argc, char **argv)
    GetPhysicalDeviceFeatures2(g.phys, &f2);
    printf("FEATURE synchronization2=%u\n", got.synchronization2);
    if (!got.synchronization2) {
+#ifdef PT_COMPAT_H
+      printf("SKIP synchronization2 unsupported\nRESULT SKIP\n");
+      return 0;
+#else
       printf("FAIL synchronization2 unsupported\n");
       return 1;
+#endif
    }
 
    uint32_t qn = 0;

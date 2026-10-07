@@ -1,0 +1,25 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) buffer Output {
+    uint out_data[];
+};
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= 64u)
+        return;
+    int8_t a = int8_t(int(i) * 37 - 100);
+    int8_t b = int8_t(int(i) * 11 + 3);
+    int8_t r1 = a * b;
+    int8_t r2 = a + b;
+    int8_t r3 = a >> 2;
+    uint8_t u = uint8_t(a) * uint8_t(7);
+    uint8_t u2 = u / uint8_t(3);
+    out_data[i * 4u + 0u] = uint(int(r1));
+    out_data[i * 4u + 1u] = uint(int(r2));
+    out_data[i * 4u + 2u] = uint(int(r3));
+    out_data[i * 4u + 3u] = uint(u2);
+}

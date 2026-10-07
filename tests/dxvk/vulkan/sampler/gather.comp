@@ -1,0 +1,16 @@
+#version 450
+// Core gather: out[2i] = textureGather(uv), out[2i+1] = textureGatherOffset(uv, const (1, -1)).
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform sampler2D tex;
+layout(std430, set = 0, binding = 1) readonly buffer In { vec4 inp[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Out { vec4 outp[]; };
+layout(push_constant) uniform PC { uint n; };
+void main()
+{
+   uint i = gl_GlobalInvocationID.x;
+   if (i >= n)
+      return;
+   vec2 uv = inp[i].xy;
+   outp[2 * i] = textureGather(tex, uv);
+   outp[2 * i + 1] = textureGatherOffset(tex, uv, ivec2(1, -1));
+}

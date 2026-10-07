@@ -1,0 +1,19 @@
+#version 450
+// shaderImageGatherExtended:
+//   out[2i]   = textureGatherOffsets(uv, {(0,0), (1,0), (-2,1), (-1,-2)})
+//   out[2i+1] = textureGatherOffset(uv, non-constant (in[i].z, in[i].w))
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform sampler2D tex;
+layout(std430, set = 0, binding = 1) readonly buffer In { vec4 inp[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Out { vec4 outp[]; };
+layout(push_constant) uniform PC { uint n; };
+const ivec2 offs[4] = ivec2[4](ivec2(0, 0), ivec2(1, 0), ivec2(-2, 1), ivec2(-1, -2));
+void main()
+{
+   uint i = gl_GlobalInvocationID.x;
+   if (i >= n)
+      return;
+   vec4 c = inp[i];
+   outp[2 * i] = textureGatherOffsets(tex, c.xy, offs);
+   outp[2 * i + 1] = textureGatherOffset(tex, c.xy, ivec2(int(c.z), int(c.w)));
+}

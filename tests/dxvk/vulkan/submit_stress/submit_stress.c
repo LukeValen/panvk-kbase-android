@@ -6,6 +6,11 @@
  * fixed amount of tiler work) seen in long dEQP-VK.api.copy_and_blit runs.
  *
  * usage: submit_stress <icd.so> [submits=50000] [render-passes-per-submit=1]
+ *                      [seconds=0]
+ * seconds > 0 (or env SUBMIT_STRESS_SECONDS) stops the run after that much
+ * wall time and lowers the fence timeout to 10 s, so a short PanProbe
+ * stability run (no DEVICE_LOST within 30 s) fits the app's 60 s test limit.
+ * Ends with "RESULT PASS" or "RESULT FAIL".
  * build: gcc -O2 -Wall -o submit_stress submit_stress.c -ldl
  */
 #include <time.h>
@@ -29,6 +34,9 @@ main(int argc, char **argv)
    }
    long n = argc > 2 ? atol(argv[2]) : 50000;
    int rps = argc > 3 ? atoi(argv[3]) : 1;
+   const char *sec_env = getenv("SUBMIT_STRESS_SECONDS");
+   double secs = argc > 4 ? atof(argv[4]) : sec_env ? atof(sec_env) : 0;
+   uint64_t wait_ns = (secs > 0 ? 10ull : 30ull) * 1000000000ull;
    struct dx7 t;
    VkPhysicalDeviceFeatures want = {0};
    dx7_init(&t, argv[1], &want);
@@ -87,22 +95,30 @@ main(int argc, char **argv)
                              t.rbuf, 1, &region);
       CK(vkEndCommandBuffer(t.cmd), "End");
       CK(vkQueueSubmit(t.queue, 1, &si, t.fence), "Submit");
-      VkResult r = vkWaitForFences(t.dev, 1, &t.fence, VK_TRUE,
-                                   30ull * 1000000000ull);
+      VkResult r = vkWaitForFences(t.dev, 1, &t.fence, VK_TRUE, wait_ns);
       if (r != VK_SUCCESS) {
          printf("FAIL submit=%ld render_passes=%ld wait r=%d\n", i,
                 i * (long)rps, r);
+         printf("RESULT FAIL\n");
          return 1;
       }
-      if ((i + 1) % 1000 == 0 || i + 1 == n) {
+      int timed_out = secs > 0 && now_s() - t0 >= secs;
+      if ((i + 1) % 1000 == 0 || i + 1 == n || timed_out) {
          int ok = dx7_is_red(dx7_px(&t, 4, 4)) &&
                   dx7_is_blue(dx7_px(&t, RT_W - 4, RT_H - 4));
          printf("submit=%ld render_passes=%ld %.1fs %s\n", i + 1,
                 (i + 1) * (long)rps, now_s() - t0, ok ? "ok" : "BADPIXELS");
-         if (!ok)
+         if (!ok) {
+            printf("RESULT FAIL\n");
             return 1;
+         }
+      }
+      if (timed_out) {
+         n = i + 1;
+         break;
       }
    }
    printf("SUBMIT_STRESS PASS submits=%ld rps=%d\n", n, rps);
+   printf("RESULT PASS\n");
    return 0;
 }

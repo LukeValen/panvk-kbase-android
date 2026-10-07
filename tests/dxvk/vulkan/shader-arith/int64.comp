@@ -1,0 +1,33 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) buffer Output {
+    uint64_t out_data[];
+};
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= 64u)
+        return;
+    uint64_t x = uint64_t(i) * 0x9E3779B97F4A7C15ul + 0x0123456789ABCDEFul;
+    uint64_t r0 = x * x;
+    uint64_t r1 = x >> 17;
+    uint64_t r2 = x << 23;
+    uint64_t r3 = x ^ (x >> 31);
+    uint64_t r4 = uint64_t(int64_t(x) >> 40);
+    uint64_t r5 = (int64_t(x) < 0l) ? 1ul : 0ul;
+    uint64_t r6 = x / 7ul;
+    uint64_t r7 = x % 1000ul;
+
+    uint base = i * 8u;
+    out_data[base + 0u] = r0;
+    out_data[base + 1u] = r1;
+    out_data[base + 2u] = r2;
+    out_data[base + 3u] = r3;
+    out_data[base + 4u] = r4;
+    out_data[base + 5u] = r5;
+    out_data[base + 6u] = r6;
+    out_data[base + 7u] = r7;
+}

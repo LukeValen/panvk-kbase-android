@@ -1,0 +1,17 @@
+#version 460
+#extension GL_ARB_gpu_shader_int64 : require
+#extension GL_EXT_shader_atomic_int64 : require
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) buffer AtomicData {
+    uint64_t counter;
+    uint64_t max_val;
+} data;
+
+void main()
+{
+    uint64_t add_val = (1ul << 32) + 1ul;
+    atomicAdd(data.counter, add_val);
+    uint64_t my_val = uint64_t(gl_GlobalInvocationID.x) + 1000ul;
+    atomicMax(data.max_val, my_val);
+}

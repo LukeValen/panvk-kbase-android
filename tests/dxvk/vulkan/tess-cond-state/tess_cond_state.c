@@ -94,7 +94,7 @@ main(int argc, char **argv)
    dx7_device_hook = hook;
    dx7_init(&t, argv[1], &want);
    if (!t.feats.tessellationShader) {
-      printf("SKIP no tessellationShader\nRESULT PASS\n");
+      printf("SKIP no tessellationShader\nRESULT SKIP\n");
       return 0;
    }
 

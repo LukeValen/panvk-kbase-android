@@ -1,0 +1,43 @@
+#version 450
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConsts {
+    uint mode;       // 0 = ssbo_load, 1 = ubo_load, 2 = ssbo_store
+    uint atomic_idx; // OOB index for atomicAdd in mode 2
+} pc;
+
+layout(set = 0, binding = 0, std140) uniform TestUbo {
+    uvec4 words[64];
+} test_ubo;
+
+layout(set = 0, binding = 1, std430) buffer TestSsbo {
+    uint data[];
+} test_ssbo;
+
+layout(set = 0, binding = 2, std430) buffer OutSsbo {
+    uint out_data[256];
+    uint atomic_ret;
+} out_ssbo;
+
+void main()
+{
+    uint i = gl_LocalInvocationID.x;
+
+    if (pc.mode == 0u) {
+        // Mode 0: SSBO load
+        out_ssbo.out_data[i] = test_ssbo.data[i];
+    } else if (pc.mode == 1u) {
+        // Mode 1: UBO load
+        uvec4 v = test_ubo.words[i];
+        out_ssbo.out_data[i * 4 + 0] = v.x;
+        out_ssbo.out_data[i * 4 + 1] = v.y;
+        out_ssbo.out_data[i * 4 + 2] = v.z;
+        out_ssbo.out_data[i * 4 + 3] = v.w;
+    } else if (pc.mode == 2u) {
+        // Mode 2: SSBO store
+        test_ssbo.data[i] = 0x1000u + i;
+        if (i == 0u) {
+            out_ssbo.atomic_ret = atomicAdd(test_ssbo.data[pc.atomic_idx], 42u);
+        }
+    }
+}

@@ -1,0 +1,18 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 2) in;
+// Both runtime arrays alias the mutable binding; each access uses an element
+// whose active descriptor type agrees with that particular shader declaration.
+layout(set = 0, binding = 0, std430) readonly buffer Value { uint value; } buffer_heap[];
+layout(set = 0, binding = 0) uniform utextureBuffer texel_heap[];
+layout(set = 1, binding = 0, std430) readonly buffer Indices { uint idx[]; } indices;
+layout(set = 1, binding = 1, std430) writeonly buffer Output { uint value[]; } output_data;
+void main()
+{
+    uint i = gl_LocalInvocationIndex;
+    if (i == 0)
+        output_data.value[i] = buffer_heap[nonuniformEXT(indices.idx[i])].value;
+    else
+        output_data.value[i] = texelFetch(texel_heap[nonuniformEXT(indices.idx[i])], 0).x;
+}

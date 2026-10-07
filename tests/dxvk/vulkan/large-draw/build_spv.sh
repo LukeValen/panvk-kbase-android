@@ -11,6 +11,9 @@ $G --vn gs_capture -o "$T/gs.h" large_draw.geom >/dev/null
 $G --vn tcs_levels -o "$T/tcs.h" large_draw.tesc >/dev/null
 $G --vn tes_capture -o "$T/tes.h" large_draw.tese >/dev/null
 $G --vn fs_white -o "$T/fs.h" large_draw.frag >/dev/null
+$G --vn gs_tri -o "$T/gs_tri.h" large_draw_tri.geom >/dev/null
+$G --vn tcs_tri -o "$T/tcs_tri.h" large_draw_tri.tesc >/dev/null
+$G --vn tes_tri -o "$T/tes_tri.h" large_draw_tri.tese >/dev/null
 
 cat "$T"/*.h | sed 's/^const uint32_t/static const uint32_t/' > large_draw_spv.h
 rm -rf "$T"

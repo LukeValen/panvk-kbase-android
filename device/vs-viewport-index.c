@@ -13,6 +13,10 @@
  *  D: VS, 5 instances, instance k % 2 picks the viewport (depth as A)
  *  E: TES, depthClamp on (as A)
  *  F: TES, depthClamp off (as C)
+ *  G: VS as A, FS writes gl_PrimitiveID to R: each primitive is its own
+ *     viewport run, the ID must stay the draw's (left 4, right 3), not
+ *     restart per run (SKIP without geometryShader, needed for the FS
+ *     PrimitiveId capability)
  * The viewport transform, scissor and depth range must follow the index per
  * primitive. Without it every primitive lands in viewport 0.
  *
@@ -24,7 +28,7 @@
  * usage: vs-viewport-index <libvulkan_panfrost.so>
  *
  * SPIR-V regen: glslangValidator -V vs-viewport-index{,-inst,-pt}.vert
- *   vs-viewport-index.{tesc,tese,frag}
+ *   vs-viewport-index.{tesc,tese,frag} vs-viewport-index-pid.frag
  */
 #define _POSIX_C_SOURCE 200809L
 #include <dlfcn.h>
@@ -348,6 +352,26 @@ static const uint32_t frag_spv[] = {
    0x00000009u, 0x00000017u, 0x000100fdu, 0x00010038u,
 };
 
+static const uint32_t frag_pid_spv[] = {
+   0x07230203u, 0x00010000u, 0x0008000bu, 0x00000014u, 0x00000000u, 0x00020011u, 0x00000001u, 0x00020011u,
+   0x00000002u, 0x0006000bu, 0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu,
+   0x00000000u, 0x00000001u, 0x0007000fu, 0x00000004u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000009u,
+   0x0000000cu, 0x00030010u, 0x00000004u, 0x00000007u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u,
+   0x00000004u, 0x6e69616du, 0x00000000u, 0x00030005u, 0x00000009u, 0x0000006fu, 0x00060005u, 0x0000000cu,
+   0x505f6c67u, 0x696d6972u, 0x65766974u, 0x00004449u, 0x00040047u, 0x00000009u, 0x0000001eu, 0x00000000u,
+   0x00040047u, 0x0000000cu, 0x0000000bu, 0x00000007u, 0x00030047u, 0x0000000cu, 0x0000000eu, 0x00020013u,
+   0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040017u,
+   0x00000007u, 0x00000006u, 0x00000004u, 0x00040020u, 0x00000008u, 0x00000003u, 0x00000007u, 0x0004003bu,
+   0x00000008u, 0x00000009u, 0x00000003u, 0x00040015u, 0x0000000au, 0x00000020u, 0x00000001u, 0x00040020u,
+   0x0000000bu, 0x00000001u, 0x0000000au, 0x0004003bu, 0x0000000bu, 0x0000000cu, 0x00000001u, 0x0004002bu,
+   0x00000006u, 0x0000000fu, 0x437f0000u, 0x0004002bu, 0x00000006u, 0x00000011u, 0x00000000u, 0x0004002bu,
+   0x00000006u, 0x00000012u, 0x3f800000u, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u,
+   0x000200f8u, 0x00000005u, 0x0004003du, 0x0000000au, 0x0000000du, 0x0000000cu, 0x0004006fu, 0x00000006u,
+   0x0000000eu, 0x0000000du, 0x00050088u, 0x00000006u, 0x00000010u, 0x0000000eu, 0x0000000fu, 0x00070050u,
+   0x00000007u, 0x00000013u, 0x00000010u, 0x00000011u, 0x00000011u, 0x00000012u, 0x0003003eu, 0x00000009u,
+   0x00000013u, 0x000100fdu, 0x00010038u,
+};
+
 #define DEV_FNS(X)                                                             \
    X(CreateBuffer) X(GetBufferMemoryRequirements) X(AllocateMemory)            \
    X(BindBufferMemory) X(MapMemory) X(CreateImage)                             \
@@ -369,7 +393,9 @@ static VkQueue queue;
 static VkPhysicalDeviceMemoryProperties mp;
 static VkRenderPass rp;
 static VkPipelineLayout pl;
-static VkShaderModule sm_vs, sm_inst, sm_pt, sm_tcs, sm_tes, sm_fs;
+static VkShaderModule sm_vs, sm_inst, sm_pt, sm_tcs, sm_tes, sm_fs, sm_fs_pid;
+/* >= 0: color R must be this primitive ID (left, right) instead of red/green. */
+static int exp_pid[2] = {-1, -1};
 static VkFramebuffer fb;
 static VkImage color_img, depth_img;
 static VkBuffer vbuf, rb_depth, rb_color;
@@ -630,8 +656,11 @@ run_case(const char *name, enum kind kind, VkPipeline pipe, const struct pt *pts
          if (!(fabsf(d - e) <= TOL))
             badD++;
          const uint8_t *c = cmap + (y * W + x) * 4;
-         if (right ? !(c[0] == 0 && c[1] == 255 && c[2] == 0 && c[3] == 255)
-                   : !(c[0] == 255 && c[1] == 0 && c[2] == 0 && c[3] == 255))
+         if (exp_pid[0] >= 0) {
+            if (c[0] != exp_pid[right] || c[3] != 255)
+               badC++;
+         } else if (right ? !(c[0] == 0 && c[1] == 255 && c[2] == 0 && c[3] == 255)
+                          : !(c[0] == 255 && c[1] == 0 && c[2] == 0 && c[3] == 255))
             badC++;
       }
    }
@@ -783,6 +812,7 @@ main(int argc, char **argv)
    ef.tessellationShader = VK_TRUE;
    ef.multiViewport = VK_TRUE;
    ef.depthClamp = VK_TRUE;
+   ef.geometryShader = f2.features.geometryShader;
    VkPhysicalDeviceDepthClipEnableFeaturesEXT edcf = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT,
       .depthClipEnable = VK_TRUE};
@@ -902,6 +932,9 @@ main(int argc, char **argv)
    MOD(sm_tcs, tcs_spv, "tcs");
    MOD(sm_tes, tes_spv, "tes");
    MOD(sm_fs, frag_spv, "fs");
+   if (f2.features.geometryShader) {
+      MOD(sm_fs_pid, frag_pid_spv, "fs_pid");
+   }
 #undef MOD
 
    VkPipeline pipe;
@@ -938,6 +971,20 @@ main(int argc, char **argv)
    if (make_pipe(K_TES, 0, 0, VK_FALSE, &pipe))
       return 1;
    fails += run_case("F_tes_noclamp", K_TES, pipe, seqC, 6, 0.125f, 0.75f);
+   /* G: as A, FS primitive ID. Last write wins: left prim 4, right prim 3. */
+   if (f2.features.geometryShader) {
+      VkShaderModule fs = sm_fs;
+      sm_fs = sm_fs_pid;
+      if (make_pipe(K_VS, 1, 0, VK_FALSE, &pipe))
+         return 1;
+      sm_fs = fs;
+      exp_pid[0] = 4;
+      exp_pid[1] = 3;
+      fails += run_case("G_vs_fs_primitive_id", K_VS, pipe, seqA, 5, 0.25f, 0.5f);
+      exp_pid[0] = exp_pid[1] = -1;
+   } else {
+      printf("SKIP case G_vs_fs_primitive_id (no geometryShader)\n");
+   }
 
    printf("RESULT %s\n", fails ? "FAIL" : "PASS");
    return fails ? 1 : 0;

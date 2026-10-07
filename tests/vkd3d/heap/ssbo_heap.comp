@@ -1,0 +1,11 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+layout(local_size_x = 8) in;
+layout(set = 0, binding = 0, std430) readonly buffer Value { uint value; } heap[];
+layout(set = 1, binding = 0, std430) readonly buffer Indices { uint idx[]; } indices;
+layout(set = 1, binding = 1, std430) writeonly buffer Output { uint value[]; } output_data;
+void main()
+{
+    uint i = gl_LocalInvocationIndex;
+    output_data.value[i] = heap[nonuniformEXT(indices.idx[i])].value;
+}

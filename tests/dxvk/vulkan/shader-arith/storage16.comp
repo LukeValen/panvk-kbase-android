@@ -1,0 +1,25 @@
+#version 450
+#extension GL_EXT_shader_16bit_storage : require
+
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer InBuf {
+    uint16_t in_data[];
+};
+
+layout(std430, binding = 1) buffer OutBuf16 {
+    uint16_t out16_data[];
+};
+
+layout(std430, binding = 2) buffer OutBuf32 {
+    uint out32_data[];
+};
+
+void main() {
+    uint j = gl_GlobalInvocationID.x;
+    if (j >= 128u)
+        return;
+    uint val = uint(in_data[j]);
+    out16_data[j] = uint16_t(val * 5u + 3u);
+    out32_data[j] = val;
+}

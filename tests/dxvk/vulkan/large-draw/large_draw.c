@@ -18,6 +18,23 @@
  *  indirect_count                        two 150000 point draws, the count
  *                                        buffer lets only the first run
  *  multi_indirect                        two indirect draws in one call
+ *  fan_direct / fan_indexed              150001 vertex triangle fan, and an
+ *                                        indexed 140001 index fan
+ *  fan_instanced                         4 vertex fan x 5000 instances
+ *  small_inst_direct / _indirect         3 points x 9000 instances (fits one
+ *                                        arena, over the 2048 instance cap)
+ *  gs_restart_direct / _indirect         triangle GS on the restart strips,
+ *                                        primitive IDs must run 0..N-1
+ *  tess_tri_direct / _indirect           70000 triangle patches, one triangle
+ *                                        each: primitives generated exact
+ *  tess_instanced                        1 isoline patch x 9000 instances
+ *  cond_skip_indirect / cond_skip_tess   conditional rendering with a zero
+ *                                        predicate: no XFB, no primitives
+ *                                        generated
+ *  cond_pass_indirect                    the same with a non-zero predicate
+ *
+ * The pipelines all use rasterizer discard, so every case also checks that
+ * XFB and the primitives generated query run without the raster draws.
  *
  * Output: PASS/FAIL per case, XFB_FAILS=n. usage: large_draw <icd>
  *
@@ -42,12 +59,14 @@
    X(GetQueryPoolResults)                                                      \
    X(DestroyQueryPool)                                                         \
    X(DestroyBuffer)                                                            \
+   X(CmdBeginConditionalRenderingEXT)                                          \
+   X(CmdEndConditionalRenderingEXT)                                            \
    X(FreeMemory)
 
 XFB_FUNCS(DX7_DECL)
 
 static const char *icd_path;
-static int has_xfb_ext, has_pg_ext;
+static int has_xfb_ext, has_pg_ext, has_cond_ext;
 static VkPhysicalDeviceFeatures enabled_features;
 static VkPhysicalDeviceTransformFeedbackFeaturesEXT xfb_features;
 static VkPhysicalDeviceVulkan12Features v12_features;
@@ -101,6 +120,9 @@ device_hook(struct dx7 *t, VkDeviceCreateInfo *dci)
       else if (!strcmp(exts[i].extensionName,
                        VK_EXT_PRIMITIVES_GENERATED_QUERY_EXTENSION_NAME))
          has_pg_ext = 1;
+      else if (!strcmp(exts[i].extensionName,
+                       VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME))
+         has_cond_ext = 1;
    }
    free(exts);
    if (!has_xfb_ext)
@@ -132,7 +154,7 @@ device_hook(struct dx7 *t, VkDeviceCreateInfo *dci)
    dci->pNext = &en_v12;
 
    static VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT en_pg;
-   static const char *ext_names[2];
+   static const char *ext_names[3];
    uint32_t n = 0;
    ext_names[n++] = VK_EXT_TRANSFORM_FEEDBACK_EXTENSION_NAME;
    if (has_pg_ext && pg_features.primitivesGeneratedQuery &&
@@ -145,6 +167,15 @@ device_hook(struct dx7 *t, VkDeviceCreateInfo *dci)
       dci->pNext = &en_pg;
       ext_names[n++] = VK_EXT_PRIMITIVES_GENERATED_QUERY_EXTENSION_NAME;
       pg_ok = 1;
+   }
+   if (has_cond_ext) {
+      static VkPhysicalDeviceConditionalRenderingFeaturesEXT en_cond;
+      en_cond.sType =
+         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT;
+      en_cond.pNext = (void *)dci->pNext;
+      en_cond.conditionalRendering = VK_TRUE;
+      dci->pNext = &en_cond;
+      ext_names[n++] = VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME;
    }
    dci->enabledExtensionCount = n;
    dci->ppEnabledExtensionNames = ext_names;
@@ -237,6 +268,8 @@ struct job {
    const uint32_t *indices;
    uint32_t index_count;
    VkDeviceSize xfb_bytes;
+   /* 0 no conditional rendering, 1 zero predicate, 2 non-zero predicate */
+   int cond;
 };
 
 struct result {
@@ -348,6 +381,15 @@ run_job(struct dx7 *t, const struct job *j, struct result *r)
                              &nb, &nm);
       nw[0] = j->count_value;
    }
+   VkBuffer pb = VK_NULL_HANDLE;
+   VkDeviceMemory pm;
+   if (j->cond) {
+      uint32_t *pw = map_buf(t, 16,
+                             VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT | host,
+                             &pb, &pm);
+      memset(pw, 0, 16);
+      pw[0] = j->cond == 2;
+   }
 
    VkQueryPool xq = make_pool(t, VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT);
    VkQueryPool pq = pg_ok ? make_pool(t, VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT)
@@ -374,6 +416,12 @@ run_job(struct dx7 *t, const struct job *j, struct result *r)
    vkCmdBeginTransformFeedbackEXT(t->cmd, 0, 0, NULL, NULL);
    const struct cmd *c = &j->cmd[0];
    const uint32_t stride = 32;
+   if (pb) {
+      VkConditionalRenderingBeginInfoEXT cri = {
+         .sType = VK_STRUCTURE_TYPE_CONDITIONAL_RENDERING_BEGIN_INFO_EXT,
+         .buffer = pb};
+      vkCmdBeginConditionalRenderingEXT(t->cmd, &cri);
+   }
    switch (j->mode) {
    case 0:
       if (j->indexed)
@@ -393,6 +441,8 @@ run_job(struct dx7 *t, const struct job *j, struct result *r)
       vkCmdDrawIndirectCount(t->cmd, db, 0, nb, 0, j->draws, stride);
       break;
    }
+   if (pb)
+      vkCmdEndConditionalRenderingEXT(t->cmd);
    VkDeviceSize coff = 0;
    vkCmdEndTransformFeedbackEXT(t->cmd, 0, 1, &cb, &coff);
    if (pq)
@@ -572,8 +622,8 @@ check_tess(const char *name, struct dx7 *t, const struct job *j, uint32_t patche
    }
    free(cnt);
    free(sum);
-   /* The tessellation primitive count is the isoline point count. */
-   return report(name, bad, &r, (uint64_t)patches * 2 * 16, patches * 2, 0);
+   /* Point mode: XFB and primitives generated both count the points. */
+   return report(name, bad, &r, (uint64_t)patches * 2 * 16, patches * 2, 1);
 }
 
 /* Canonical (sorted) triangle, so the strip winding does not matter. */
@@ -617,6 +667,126 @@ check_strip(const char *name, struct dx7 *t, const struct job *j,
    }
    int bad = check_strip_prims(&r, exp, nprims, name);
    return report(name, bad, &r, (uint64_t)nprims * 3 * 16, nprims, 1);
+}
+
+/* Only the counters: XFB bytes, the XFB query and primitives generated. */
+static int
+check_counts(const char *name, struct dx7 *t, const struct job *j,
+             uint64_t records, uint64_t prims)
+{
+   if (!want(name))
+      return 0;
+   struct result r;
+   if (run_job(t, j, &r)) {
+      printf("FAIL case %s did not complete\n", name);
+      return 1;
+   }
+   return report(name, 0, &r, records * 16, prims, 1);
+}
+
+/* Instanced fan: primitive k is triangle k % (verts - 2) of instance
+ * k / (verts - 2), {fv, fv + p + 1, fv + p + 2} sorted.
+ */
+static int
+check_fan_inst(const char *name, struct dx7 *t, const struct job *j,
+               uint32_t verts, uint32_t insts, uint32_t fv, uint32_t fi)
+{
+   if (!want(name))
+      return 0;
+   struct result r;
+   if (run_job(t, j, &r)) {
+      printf("FAIL case %s did not complete\n", name);
+      return 1;
+   }
+   const uint32_t ppi = verts - 2, n = ppi * insts;
+   int bad = 0;
+   for (uint32_t k = 0; k < n; k++) {
+      uint32_t inst = k / ppi, p = k % ppi, v[3];
+      int wrong = 0;
+      for (int c = 0; c < 3; c++) {
+         v[c] = (uint32_t)wf(r.words, k * 3 + c, 0);
+         wrong |= wf(r.words, k * 3 + c, 1) != (float)(fi + inst);
+      }
+      for (int a = 0; a < 2; a++)
+         for (int b = 0; b < 2 - a; b++)
+            if (v[b] > v[b + 1]) {
+               uint32_t s = v[b];
+               v[b] = v[b + 1];
+               v[b + 1] = s;
+            }
+      wrong |= v[0] != fv || v[1] != fv + p + 1 || v[2] != fv + p + 2;
+      if (wrong) {
+         if (bad < 4)
+            printf("  prim %u: %u %u %u inst %g, want %u %u %u inst %u\n", k,
+                   v[0], v[1], v[2], wf(r.words, k * 3, 1), fv, fv + p + 1,
+                   fv + p + 2, fi + inst);
+         bad++;
+      }
+   }
+   return report(name, bad, &r, (uint64_t)n * 3 * 16, n, 1);
+}
+
+/* Triangle GS: record k is primitive k, the sum of its vertex indices and
+ * gl_PrimitiveIDIn == k.
+ */
+static int
+check_gs_tri(const char *name, struct dx7 *t, const struct job *j,
+             const uint32_t *exp, uint32_t nprims)
+{
+   if (!want(name))
+      return 0;
+   struct result r;
+   if (run_job(t, j, &r)) {
+      printf("FAIL case %s did not complete\n", name);
+      return 1;
+   }
+   int bad = 0;
+   for (uint32_t k = 0; k < nprims; k++) {
+      float sum = (float)(exp[k * 3] + exp[k * 3 + 1] + exp[k * 3 + 2]);
+      if (wf(r.words, k, 0) != sum || wf(r.words, k, 2) != (float)k) {
+         if (bad < 4)
+            printf("  rec %u: sum %g id %g, want %g %u\n", k, wf(r.words, k, 0),
+                   wf(r.words, k, 2), sum, k);
+         bad++;
+      }
+   }
+   return report(name, bad, &r, (uint64_t)nprims * 16, nprims, 1);
+}
+
+/* Triangle-domain tessellation, one triangle (3 records) per patch. */
+static int
+check_tess_tri(const char *name, struct dx7 *t, const struct job *j,
+               uint32_t patches, uint32_t first_vertex)
+{
+   if (!want(name))
+      return 0;
+   struct result r;
+   if (run_job(t, j, &r)) {
+      printf("FAIL case %s did not complete\n", name);
+      return 1;
+   }
+   uint8_t *cnt = calloc(patches, 1);
+   int bad = 0;
+   for (uint32_t i = 0; i < patches * 3; i++) {
+      float p = wf(r.words, i, 2);
+      if (!(p >= 0.0f && p < (float)patches) ||
+          wf(r.words, i, 0) != first_vertex + p) {
+         if (bad < 4)
+            printf("  rec %u: %g %g %g\n", i, wf(r.words, i, 0),
+                   wf(r.words, i, 1), wf(r.words, i, 2));
+         bad++;
+         continue;
+      }
+      cnt[(uint32_t)p]++;
+   }
+   for (uint32_t p = 0; p < patches; p++)
+      if (cnt[p] != 3) {
+         if (bad < 4)
+            printf("  patch %u: %u records\n", p, cnt[p]);
+         bad++;
+      }
+   free(cnt);
+   return report(name, bad, &r, (uint64_t)patches * 3 * 16, patches, 1);
 }
 
 static const uint32_t strip_lens[] = {1000, 70001, 777, 1500, 3, 0, 2,
@@ -759,8 +929,94 @@ main(int argc, char **argv)
    jr.mode = 1;
    jr.draws = 1;
    fails += check_strip("restart_indirect", &t, &jr, exp, nexp);
+
+   /* Triangle GS on the same restart strips: exact primitive IDs. */
+   if (t.feats.geometryShader) {
+      struct pipe_desc g = {.vs = vs_feed, .vs_size = sizeof(vs_feed),
+                            .gs = gs_tri, .gs_size = sizeof(gs_tri),
+                            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+                            .restart = VK_TRUE};
+      jr.pipe = make_pipe(&t, &g);
+      jr.xfb_bytes = (uint64_t)nexp * 16 + 1024;
+      jr.mode = 0;
+      fails += check_gs_tri("gs_restart_direct", &t, &jr, exp, nexp);
+      jr.mode = 1;
+      fails += check_gs_tri("gs_restart_indirect", &t, &jr, exp, nexp);
+   }
    free(idx);
    free(exp);
+
+   /* Triangle fans: triangle k is {0, k + 1, k + 2}. */
+   pd = (struct pipe_desc){.vs = vs_capture, .vs_size = sizeof(vs_capture),
+                           .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN};
+   VkPipeline p_fan = make_pipe(&t, &pd);
+   nprims = NSTRIP - 2;
+   exp = malloc((size_t)nprims * 12);
+   for (uint32_t k = 0; k < nprims; k++) {
+      exp[k * 3] = FV;
+      exp[k * 3 + 1] = FV + k + 1;
+      exp[k * 3 + 2] = FV + k + 2;
+   }
+   struct job jf = {.pipe = p_fan, .xfb_bytes = (uint64_t)nprims * 48 + 1024};
+   jf.cmd[0] = (struct cmd){NSTRIP, 1, FV, 0, 0};
+   fails += check_strip("fan_direct", &t, &jf, exp, nprims);
+   free(exp);
+
+   /* Indexed fan, descending indices after LEAD ignored ones. */
+   const uint32_t nfi = 140001;
+   idx = malloc((size_t)(nfi + LEAD) * 4);
+   for (uint32_t i = 0; i < LEAD; i++)
+      idx[i] = 999999;
+   for (uint32_t i = 0; i < nfi; i++)
+      idx[LEAD + i] = 300000 - i;
+   nprims = nfi - 2;
+   exp = malloc((size_t)nprims * 12);
+   for (uint32_t k = 0; k < nprims; k++) {
+      /* sorted: 300000 - k - 2 < 300000 - k - 1 < 300000 */
+      exp[k * 3] = 300000 - k - 2 + VOFF;
+      exp[k * 3 + 1] = 300000 - k - 1 + VOFF;
+      exp[k * 3 + 2] = 300000 + VOFF;
+   }
+   struct job jfi = {.pipe = p_fan, .indexed = 1, .indices = idx,
+                     .index_count = nfi + LEAD,
+                     .xfb_bytes = (uint64_t)nprims * 48 + 1024};
+   jfi.cmd[0] = (struct cmd){nfi, 1, LEAD, VOFF, 0};
+   fails += check_strip("fan_indexed", &t, &jfi, exp, nprims);
+   free(idx);
+   free(exp);
+
+   /* Instanced fan over the 2048 instance cap. */
+   struct job jfn = {.pipe = p_fan, .xfb_bytes = 2ull * 5000 * 48 + 1024};
+   jfn.cmd[0] = (struct cmd){4, 5000, FV, 0, FI};
+   fails += check_fan_inst("fan_instanced", &t, &jfn, 4, 5000, FV, FI);
+
+   /* Instances over the cap that fit one arena. */
+   struct job jsi = {.pipe = p_points, .xfb_bytes = (3 * 9000 + 64) * 16ull};
+   jsi.cmd[0] = (struct cmd){3, 9000, FV, 0, FI};
+   fails += check_points("small_inst_direct", &t, &jsi, 27000, 3, FV, FI, 27000);
+   jsi.mode = 1;
+   jsi.draws = 1;
+   fails += check_points("small_inst_indirect", &t, &jsi, 27000, 3, FV, FI,
+                         27000);
+
+   /* Conditional rendering: a zero predicate skips XFB and the queries. */
+   if (has_cond_ext && vkCmdBeginConditionalRenderingEXT) {
+      struct job jc = {.pipe = p_points, .mode = 1, .draws = 1, .cond = 1,
+                       .xfb_bytes = (NPTS + 64) * 16ull};
+      jc.cmd[0] = (struct cmd){NPTS, 1, FV, 0, FI};
+      fails += check_counts("cond_skip_indirect", &t, &jc, 0, 0);
+      jc.cond = 2;
+      fails += check_points("cond_pass_indirect", &t, &jc, NPTS, NPTS, FV, FI,
+                            NPTS);
+      if (p_tess) {
+         struct job jt = {.pipe = p_tess, .cond = 1,
+                          .xfb_bytes = (NPATCH * 2 + 64) * 16ull};
+         jt.cmd[0] = (struct cmd){NPATCH, 1, FV, 0, 0};
+         fails += check_counts("cond_skip_tess", &t, &jt, 0, 0);
+      }
+   } else {
+      printf("SKIP cond cases: VK_EXT_conditional_rendering not exposed\n");
+   }
 
    /* Geometry shader. */
    if (p_gs) {
@@ -782,6 +1038,23 @@ main(int argc, char **argv)
       jt.mode = 1;
       jt.draws = 1;
       fails += check_tess("tess_indirect", &t, &jt, NPATCH, FV);
+
+      /* 9000 instances of one patch: the tess chunks cap instances too. */
+      jt = (struct job){.pipe = p_tess, .xfb_bytes = (9000 * 2 + 64) * 16ull};
+      jt.cmd[0] = (struct cmd){1, 9000, FV, 0, 0};
+      fails += check_counts("tess_instanced", &t, &jt, 9000 * 2, 9000 * 2);
+
+      struct pipe_desc g = {.vs = vs_feed, .vs_size = sizeof(vs_feed),
+                            .tcs = tcs_tri, .tcs_size = sizeof(tcs_tri),
+                            .tes = tes_tri, .tes_size = sizeof(tes_tri),
+                            .topology = VK_PRIMITIVE_TOPOLOGY_PATCH_LIST};
+      jt = (struct job){.pipe = make_pipe(&t, &g),
+                        .xfb_bytes = (NPATCH * 3 + 64) * 16ull};
+      jt.cmd[0] = (struct cmd){NPATCH, 1, FV, 0, 0};
+      fails += check_tess_tri("tess_tri_direct", &t, &jt, NPATCH, FV);
+      jt.mode = 1;
+      jt.draws = 1;
+      fails += check_tess_tri("tess_tri_indirect", &t, &jt, NPATCH, FV);
    } else {
       printf("SKIP tess cases: tessellationShader not exposed\n");
    }

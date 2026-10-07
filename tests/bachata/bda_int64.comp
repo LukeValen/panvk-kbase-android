@@ -1,0 +1,19 @@
+#version 460
+#extension GL_EXT_buffer_reference : require
+#extension GL_ARB_gpu_shader_int64 : require
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(buffer_reference, std430, buffer_reference_align = 8) buffer TargetBuf {
+    uint64_t values[];
+};
+
+layout(push_constant) uniform PushConsts {
+    uint64_t target_addr;
+} pc;
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    TargetBuf buf = TargetBuf(pc.target_addr);
+    buf.values[gid] = uint64_t(gid) * 0x100000001ul;
+}

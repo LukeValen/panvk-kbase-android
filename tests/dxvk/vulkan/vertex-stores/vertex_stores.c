@@ -59,6 +59,7 @@ device_hook(struct dx7 *t, VkDeviceCreateInfo *dci)
 {
    if (!t->feats.vertexPipelineStoresAndAtomics) {
       printf("SKIP vertexPipelineStoresAndAtomics not supported\n");
+      printf("RESULT SKIP\n");
       exit(0);
    }
    enabled_features.vertexPipelineStoresAndAtomics = VK_TRUE;
@@ -702,6 +703,7 @@ main(int argc, char **argv)
 
    if (!enabled_features.vertexPipelineStoresAndAtomics) {
       printf("SKIP vertexPipelineStoresAndAtomics not supported\n");
+      printf("RESULT SKIP\n");
       return 0;
    }
 

@@ -18,12 +18,20 @@
  *  G: no fragment shader, static bounds, depth writes on with the viewport
  *     depth range [0.9, 0.9]: depth must become 0.9 only inside the bounds.
  *     (Run before F.)
+ *  H: EarlyFragmentTests FS, static bounds, depth writes on with the
+ *     viewport depth range [0.9, 0.9]: the bounds test must use the STORED
+ *     depth (early tests come before the update), so green and depth 0.9
+ *     only inside the bounds. A test that reads the new depth kills all.
+ *  I: perf sanity: 2000 overdraw strips with the dynamic enable off vs a
+ *     pipeline without the depth bounds test. The lowered FS must keep FPK
+ *     and early ZS while off: FAIL if more than 2.5x slower (both > 2 ms).
  *
  * Without the depthBounds feature the test reports FAIL and stops.
  * Output: PASS/FAIL/SKIP per case, then "RESULT PASS" or "RESULT FAIL".
  * usage: depth-bounds <libvulkan_panfrost.so>
  *
  * SPIR-V regen: glslangValidator -V depth-bounds.vert depth-bounds.frag
+ *   depth-bounds-eft.frag
  */
 #define _POSIX_C_SOURCE 200809L
 #include <dlfcn.h>
@@ -31,6 +39,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <vulkan/vulkan.h>
 
 #define W 32u
@@ -103,6 +112,21 @@ static const uint32_t fs_spv[] = {
    0x00000005u, 0x0003003eu, 0x00000009u, 0x0000000cu, 0x000100fdu, 0x00010038u,
 };
 
+static const uint32_t fs_eft_spv[] = {
+   0x07230203u, 0x00010000u, 0x0008000bu, 0x0000000du, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+   0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+   0x0006000fu, 0x00000004u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000009u, 0x00030010u, 0x00000004u,
+   0x00000007u, 0x00030010u, 0x00000004u, 0x00000009u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u,
+   0x00000004u, 0x6e69616du, 0x00000000u, 0x00030005u, 0x00000009u, 0x0000006fu, 0x00040047u, 0x00000009u,
+   0x0000001eu, 0x00000000u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u,
+   0x00000006u, 0x00000020u, 0x00040017u, 0x00000007u, 0x00000006u, 0x00000004u, 0x00040020u, 0x00000008u,
+   0x00000003u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000009u, 0x00000003u, 0x0004002bu, 0x00000006u,
+   0x0000000au, 0x00000000u, 0x0004002bu, 0x00000006u, 0x0000000bu, 0x3f800000u, 0x0007002cu, 0x00000007u,
+   0x0000000cu, 0x0000000au, 0x0000000bu, 0x0000000au, 0x0000000bu, 0x00050036u, 0x00000002u, 0x00000004u,
+   0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u, 0x0003003eu, 0x00000009u, 0x0000000cu, 0x000100fdu,
+   0x00010038u,
+};
+
 #define DEV_FNS(X)                                                             \
    X(CreateBuffer) X(GetBufferMemoryRequirements) X(AllocateMemory)            \
    X(BindBufferMemory) X(MapMemory) X(CreateImage)                             \
@@ -124,7 +148,7 @@ static VkQueue queue;
 static VkPhysicalDeviceMemoryProperties mp;
 static VkRenderPass rp;
 static VkPipelineLayout pl;
-static VkShaderModule sm_vs, sm_fs;
+static VkShaderModule sm_vs, sm_fs, sm_fs_eft;
 static VkFramebuffer fb;
 static VkImage color_img, depth_img;
 static VkBuffer rb_depth, rb_color;
@@ -225,7 +249,9 @@ make_image(VkFormat fmt, VkSampleCountFlagBits samples, VkImageUsageFlags usage,
 
 static PFN_vkCmdSetDepthBoundsTestEnable p_CmdSetDepthBoundsTestEnable;
 
-enum mode { M_FILL, M_STATIC, M_DYN, M_DYN_EN, M_NOFS };
+/* M_EFT: M_NOFS with the EarlyFragmentTests FS and color writes on.
+ * M_PLAIN: M_STATIC without the depth bounds test. */
+enum mode { M_FILL, M_STATIC, M_DYN, M_DYN_EN, M_NOFS, M_EFT, M_PLAIN };
 
 static int
 make_pipe(enum mode mode, VkSampleCountFlagBits samples, VkRenderPass r,
@@ -235,15 +261,17 @@ make_pipe(enum mode mode, VkSampleCountFlagBits samples, VkRenderPass r,
       {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
        .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = sm_vs, .pName = "main"},
       {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-       .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = sm_fs, .pName = "main"}};
+       .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+       .module = mode == M_EFT ? sm_fs_eft : sm_fs, .pName = "main"}};
    VkPipelineVertexInputStateCreateInfo vis = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
    VkPipelineInputAssemblyStateCreateInfo ias = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP};
    /* M_NOFS: no FS, writes the constant depth 0.9 where the bounds pass. */
-   VkViewport vp = {0.0f, 0.0f, (float)W, (float)H, mode == M_NOFS ? 0.9f : 0.0f,
-                    mode == M_NOFS ? 0.9f : 1.0f};
+   int z9 = mode == M_NOFS || mode == M_EFT;
+   VkViewport vp = {0.0f, 0.0f, (float)W, (float)H, z9 ? 0.9f : 0.0f,
+                    z9 ? 0.9f : 1.0f};
    VkRect2D sc = {{0, 0}, {W, H}};
    VkPipelineViewportStateCreateInfo vs = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -258,9 +286,9 @@ make_pipe(enum mode mode, VkSampleCountFlagBits samples, VkRenderPass r,
    VkPipelineDepthStencilStateCreateInfo ds = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .depthTestEnable = VK_TRUE,
-      .depthWriteEnable = mode == M_FILL || mode == M_NOFS ? VK_TRUE : VK_FALSE,
+      .depthWriteEnable = mode == M_FILL || z9 ? VK_TRUE : VK_FALSE,
       .depthCompareOp = VK_COMPARE_OP_ALWAYS,
-      .depthBoundsTestEnable = mode == M_FILL ? VK_FALSE : VK_TRUE,
+      .depthBoundsTestEnable = mode == M_FILL || mode == M_PLAIN ? VK_FALSE : VK_TRUE,
       .minDepthBounds = 0.3f, .maxDepthBounds = 0.6f};
    VkPipelineColorBlendAttachmentState cba = {
       .colorWriteMask = mode == M_FILL || mode == M_NOFS
@@ -298,7 +326,8 @@ static const float sx4[4] = {0.375f, 0.875f, 0.125f, 0.625f};
 
 /* en: -1 leaves the enable static. kind 1: 4x pass resolved into color_img,
  * each pixel's green must match its count of in-bounds samples. kind 2: no
- * FS (M_NOFS), checked on the depth buffer. */
+ * FS (M_NOFS), checked on the depth buffer. kind 3: M_EFT, depth as kind 2,
+ * color green where the bounds pass. */
 static int
 run_case(const char *name, VkRenderPass r, VkFramebuffer f, int kind,
          VkPipeline fill, VkPipeline pipe, int dynb, float lo, float hi, int en,
@@ -382,8 +411,8 @@ run_case(const char *name, VkRenderPass r, VkFramebuffer f, int kind,
          int near = fabsf(d - lo) < 0.01f || fabsf(d - hi) < 0.01f;
          int want = expect_all || (d >= lo && d <= hi);
          /* kind 2: depth becomes 0.9 where the bounds pass, color untouched. */
-         float wd = kind == 2 && want ? 0.9f : d;
-         if (!(kind == 2 && near) && fabsf(dmap[y * W + x] - wd) > 1e-4f)
+         float wd = kind >= 2 && want ? 0.9f : d;
+         if (!(kind >= 2 && near) && fabsf(dmap[y * W + x] - wd) > 1e-4f)
             badD++;
          if (!expect_all && near) {
             skipped++;
@@ -405,6 +434,75 @@ run_case(const char *name, VkRenderPass r, VkFramebuffer f, int kind,
           "partial=%u skipped=%u badColor=%u badDepth=%u\n",
           ok ? "PASS" : "FAIL", name, lo, hi, in, out, partial, skipped, badC,
           badD);
+   return !ok;
+}
+
+/* Best of 3: fill, then n strips of pipe (enable off when en), seconds. */
+static double
+time_draws(VkPipeline fill, VkPipeline pipe, int en, uint32_t n)
+{
+   double best = 1e9;
+   for (int it = 0; it < 3; it++) {
+      if (p_ResetCommandBuffer(cmd, 0) != VK_SUCCESS)
+         return -1;
+      VkCommandBufferBeginInfo bi = {
+         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+      p_BeginCommandBuffer(cmd, &bi);
+      VkClearValue cv[2];
+      memset(cv, 0, sizeof(cv));
+      cv[1].depthStencil.depth = 1.0f;
+      VkRenderPassBeginInfo rbi = {
+         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+         .renderPass = rp, .framebuffer = fb,
+         .renderArea = {{0, 0}, {W, H}}, .clearValueCount = 2, .pClearValues = cv};
+      p_CmdBeginRenderPass(cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
+      p_CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fill);
+      p_CmdDraw(cmd, 4, 1, 0, 0);
+      p_CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+      if (en) {
+         p_CmdSetDepthBounds(cmd, 0.3f, 0.6f);
+         p_CmdSetDepthBoundsTestEnable(cmd, VK_FALSE);
+      }
+      for (uint32_t i = 0; i < n; i++)
+         p_CmdDraw(cmd, 4, 1, 0, 0);
+      p_CmdEndRenderPass(cmd);
+      if (p_EndCommandBuffer(cmd) != VK_SUCCESS)
+         return -1;
+      p_ResetFences(dev, 1, &fence);
+      VkSubmitInfo si = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                         .commandBufferCount = 1, .pCommandBuffers = &cmd};
+      struct timespec a, b;
+      clock_gettime(CLOCK_MONOTONIC, &a);
+      if (p_QueueSubmit(queue, 1, &si, fence) != VK_SUCCESS ||
+          p_WaitForFences(dev, 1, &fence, VK_TRUE, 20000000000ull) != VK_SUCCESS)
+         return -1;
+      clock_gettime(CLOCK_MONOTONIC, &b);
+      double t = (b.tv_sec - a.tv_sec) + (b.tv_nsec - a.tv_nsec) * 1e-9;
+      if (t < best)
+         best = t;
+   }
+   return best;
+}
+
+/* I: FPK/early-ZS sanity of a lowered pipeline with the test off. Coarse:
+ * CPU wall time of one submit, so only a gross loss fails.
+ */
+static int
+perf_case(VkPipeline fill, VkPipeline plain, VkPipeline dyn_en)
+{
+   const uint32_t n = 2000;
+   double tp = time_draws(fill, plain, 0, n);
+   double td = time_draws(fill, dyn_en, 1, n);
+   if (tp < 0 || td < 0) {
+      printf("FAIL case I_perf_dyn_off submit\n");
+      return 1;
+   }
+   /* Wall-clock, noisy on phones (1.70 seen on a good build): only flag a
+    * real FPK/early-ZS loss. */
+   int ok = !(tp > 0.002 && td > 0.002 && td > 2.5 * tp);
+   printf("%s case I_perf_dyn_off plain=%.3fms dyn_off=%.3fms ratio=%.2f\n",
+          ok ? "PASS" : "FAIL", tp * 1e3, td * 1e3, tp > 0 ? td / tp : 0.0);
    return !ok;
 }
 
@@ -620,6 +718,7 @@ main(int argc, char **argv)
    CK(p_CreateShaderModule(dev, &smi, NULL, &(var)), what)
    MOD(sm_vs, vs_spv, "vs");
    MOD(sm_fs, fs_spv, "fs");
+   MOD(sm_fs_eft, fs_eft_spv, "fs_eft");
 #undef MOD
 
    const VkSampleCountFlagBits S1 = VK_SAMPLE_COUNT_1_BIT;
@@ -647,6 +746,19 @@ main(int argc, char **argv)
       return 1;
    fails += run_case("G_no_fs_static", rp, fb, 2, fill, nofs, 0, 0.3f, 0.6f, -1,
                      0);
+   VkPipeline eft;
+   if (make_pipe(M_EFT, S1, rp, &eft))
+      return 1;
+   fails += run_case("H_eft_depth_write", rp, fb, 3, fill, eft, 0, 0.3f, 0.6f,
+                     -1, 0);
+   if (p_CmdSetDepthBoundsTestEnable) {
+      VkPipeline plain;
+      if (make_pipe(M_PLAIN, S1, rp, &plain))
+         return 1;
+      fails += perf_case(fill, plain, de);
+   } else {
+      printf("SKIP case I (vkCmdSetDepthBoundsTestEnable unavailable)\n");
+   }
 
    /* F: 4x MSAA, static bounds, resolved into color_img. */
    VkPhysicalDeviceProperties pp;

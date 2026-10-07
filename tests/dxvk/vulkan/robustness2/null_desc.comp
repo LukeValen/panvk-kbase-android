@@ -1,0 +1,56 @@
+#version 450
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std140) uniform Ubo {
+    vec4 val;
+} ubo;
+
+layout(set = 0, binding = 1, std430) buffer NullSsbo {
+    uint values[];
+} null_ssbo;
+
+layout(set = 0, binding = 2) uniform sampler2D null_sampler;
+layout(set = 0, binding = 3, rgba8) uniform image2D null_storage_image;
+layout(set = 0, binding = 4) uniform samplerBuffer null_texel_buffer;
+
+layout(set = 0, binding = 5, std430) buffer OutBuf {
+    uint data[];
+} out_buf;
+
+void main()
+{
+    uint idx = gl_LocalInvocationID.x;
+
+    vec4 ubo_v = ubo.val;
+    uint ssbo_v = null_ssbo.values[idx];
+    vec4 samp_v = texelFetch(null_sampler, ivec2(int(idx), 0), 0);
+    vec4 img_v = imageLoad(null_storage_image, ivec2(int(idx), 0));
+    vec4 txb_v = texelFetch(null_texel_buffer, int(idx));
+
+    // Stores to null SSBO and storage image (must be discarded, no fault)
+    null_ssbo.values[idx] = 0x12345678u;
+    imageStore(null_storage_image, ivec2(int(idx), 0), vec4(1.0, 2.0, 3.0, 4.0));
+
+    // Write raw results to output
+    out_buf.data[0] = floatBitsToUint(ubo_v.x);
+    out_buf.data[1] = floatBitsToUint(ubo_v.y);
+    out_buf.data[2] = floatBitsToUint(ubo_v.z);
+    out_buf.data[3] = floatBitsToUint(ubo_v.w);
+
+    out_buf.data[4] = ssbo_v;
+
+    out_buf.data[5] = floatBitsToUint(samp_v.x);
+    out_buf.data[6] = floatBitsToUint(samp_v.y);
+    out_buf.data[7] = floatBitsToUint(samp_v.z);
+    out_buf.data[8] = floatBitsToUint(samp_v.w);
+
+    out_buf.data[9]  = floatBitsToUint(img_v.x);
+    out_buf.data[10] = floatBitsToUint(img_v.y);
+    out_buf.data[11] = floatBitsToUint(img_v.z);
+    out_buf.data[12] = floatBitsToUint(img_v.w);
+
+    out_buf.data[13] = floatBitsToUint(txb_v.x);
+    out_buf.data[14] = floatBitsToUint(txb_v.y);
+    out_buf.data[15] = floatBitsToUint(txb_v.z);
+    out_buf.data[16] = floatBitsToUint(txb_v.w);
+}

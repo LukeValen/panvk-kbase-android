@@ -1,0 +1,22 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8) in;
+// Compile two variants so each full-size array fits the per-stage aggregate
+// resource limit. The heaps remain distinct variable-count sets 0 and 1.
+#ifdef STORAGE_HEAP
+layout(set = 1, binding = 0, r32ui) readonly uniform uimageBuffer storage_heap[];
+#else
+layout(set = 0, binding = 0) uniform utextureBuffer uniform_heap[];
+#endif
+layout(set = 2, binding = 0, std430) readonly buffer Indices { uint idx[]; } indices;
+layout(set = 2, binding = 1, std430) writeonly buffer Output { uint value[]; } output_data;
+void main()
+{
+    uint i = gl_LocalInvocationIndex;
+#ifdef STORAGE_HEAP
+    output_data.value[8 + i] = imageLoad(storage_heap[nonuniformEXT(indices.idx[8 + i])], 0).x;
+#else
+    output_data.value[i] = texelFetch(uniform_heap[nonuniformEXT(indices.idx[i])], 0).x;
+#endif
+}

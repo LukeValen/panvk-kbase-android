@@ -13,8 +13,13 @@
  *  inline_sec_inline   inline 1x, secondary 4x, inline 1x
  *  sec_inline_4x       secondary 4x, inline 1x, inline 4x
  *  sec_4x_sec_1x       two rendering instances, each with a secondary
- *  sec_mixed           one secondary that draws 1x then 4x; only run with
- *                      VMR_MIXED=1 (known gap: a secondary has one count)
+ *  sec_mixed           one secondary that draws 1x then 4x
+ *  sec_mixed_1414      one secondary 1x 4x 1x 4x (three segment cuts)
+ *  sec_mixed_call      mixed secondary between two plain ones, one call
+ *  resume_cb_4x_1x     inline 4x suspended in one primary, resumed with
+ *                      inline 1x in a second primary (same submit)
+ *  resume_cb_sec       secondary 1x/4x suspended, resumed in the second
+ *                      primary with a secondary 4x/1x
  *
  * Output: PASS/FAIL per case, RESULT PASS|FAIL. usage: vmr_secondary <icd>
  *
@@ -44,6 +49,7 @@ device_hook(struct dx7 *t, VkDeviceCreateInfo *dci)
 {
    enabled_features.sampleRateShading = t->feats.sampleRateShading;
    enabled_features.fragmentStoresAndAtomics = t->feats.fragmentStoresAndAtomics;
+   enabled_features.variableMultisampleRate = t->feats.variableMultisampleRate;
    v13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
    v13.dynamicRendering = VK_TRUE;
    dci->pEnabledFeatures = &enabled_features;
@@ -69,7 +75,7 @@ struct tcase {
    const char *name;
    struct inst i[MAX_INST];
    int ni;
-   int mixed;
+   int split; /* >0: instances from here on go in a second primary */
 };
 
 static struct dx7 t;
@@ -78,6 +84,7 @@ static VkPipelineLayout lay;
 static VkDescriptorSet dset;
 static uint32_t *counts;
 static VkCommandBuffer secs[MAX_SEC];
+static VkCommandBuffer cmd2;
 
 static void
 draw_one(VkCommandBuffer cb, const struct draw *d)
@@ -119,13 +126,21 @@ run_case(const struct tcase *c)
    memset(counts, 0, 64 * 4);
    CK(vkResetFences(t.dev, 1, &t.fence), "ResetFence");
    CK(vkResetCommandBuffer(t.cmd, 0), "ResetCmd");
+   CK(vkResetCommandBuffer(cmd2, 0), "ResetCmd2");
    VkCommandBufferBeginInfo bi = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-   CK(vkBeginCommandBuffer(t.cmd, &bi), "BeginCmd");
+   VkCommandBuffer cb = t.cmd;
+   CK(vkBeginCommandBuffer(cb, &bi), "BeginCmd");
 
    for (int n = 0; n < c->ni; n++) {
       const struct inst *in = &c->i[n];
       VkRenderingFlags flags = 0;
+
+      if (c->split && n == c->split) {
+         CK(vkEndCommandBuffer(cb), "EndCmd");
+         cb = cmd2;
+         CK(vkBeginCommandBuffer(cb, &bi), "BeginCmd2");
+      }
 
       if (n > 0)
          flags |= VK_RENDERING_RESUMING_BIT;
@@ -151,23 +166,26 @@ run_case(const struct tcase *c)
          for (uint32_t k = 0; k < in->d[d].samples; k++)
             expect[in->d[d].slot + 8 * k] += AREA * AREA;
 
-      vkCmdBeginRendering(t.cmd, &ri);
+      vkCmdBeginRendering(cb, &ri);
       if (in->secondary) {
          if (in->separate_calls)
             for (int s = 0; s < in->ns; s++)
-               vkCmdExecuteCommands(t.cmd, 1, &secs[first + s]);
+               vkCmdExecuteCommands(cb, 1, &secs[first + s]);
          else
-            vkCmdExecuteCommands(t.cmd, in->ns, &secs[first]);
+            vkCmdExecuteCommands(cb, in->ns, &secs[first]);
       } else {
          for (int d = 0; d < in->nd; d++)
-            draw_one(t.cmd, &in->d[d]);
+            draw_one(cb, &in->d[d]);
       }
-      vkCmdEndRendering(t.cmd);
+      vkCmdEndRendering(cb);
    }
-   CK(vkEndCommandBuffer(t.cmd), "EndCmd");
+   CK(vkEndCommandBuffer(cb), "EndCmd");
 
+   /* Suspend/resume across primaries must be in one batch, in order. */
+   VkCommandBuffer cbs[2] = {t.cmd, cmd2};
    VkSubmitInfo si = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                      .commandBufferCount = 1, .pCommandBuffers = &t.cmd};
+                      .commandBufferCount = c->split ? 2 : 1,
+                      .pCommandBuffers = cbs};
    CK(vkQueueSubmit(t.queue, 1, &si, t.fence), "QueueSubmit");
    VkResult r = vkWaitForFences(t.dev, 1, &t.fence, VK_TRUE,
                                 30ull * 1000000000ull);
@@ -184,9 +202,8 @@ run_case(const struct tcase *c)
                    counts[i], expect[i]);
          bad++;
       }
-   printf("%s case %s bad=%d\n", bad ? (c->mixed ? "KNOWN-GAP" : "FAIL")
-                                      : "PASS", c->name, bad);
-   return bad && !c->mixed;
+   printf("%s case %s bad=%d\n", bad ? "FAIL" : "PASS", c->name, bad);
+   return bad != 0;
 }
 
 #define D(s, sl) {s, sl}
@@ -208,12 +225,12 @@ main(int argc, char **argv)
    EXTRA_FUNCS(LOAD)
 
    const uint32_t sc = t.props.limits.framebufferNoAttachmentsSampleCounts;
-   printf("FEATURE noAttachmentSamples=0x%x sampleRateShading=%d\n", sc,
-          t.feats.sampleRateShading);
+   printf("FEATURE noAttachmentSamples=0x%x sampleRateShading=%d vmr=%d\n", sc,
+          t.feats.sampleRateShading, t.feats.variableMultisampleRate);
    if (!t.feats.sampleRateShading || !t.feats.fragmentStoresAndAtomics ||
-       !(sc & VK_SAMPLE_COUNT_4_BIT)) {
-      printf("SKIP no 4x sample shading without attachments\n");
-      printf("RESULT PASS\n");
+       !t.feats.variableMultisampleRate || !(sc & VK_SAMPLE_COUNT_4_BIT)) {
+      printf("SKIP no 4x sample shading or VMR without attachments\n");
+      printf("RESULT SKIP\n");
       return 0;
    }
 
@@ -311,6 +328,9 @@ main(int argc, char **argv)
       .commandPool = pool, .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
       .commandBufferCount = MAX_SEC};
    CK(vkAllocateCommandBuffers(t.dev, &cbai, secs), "Secs");
+   cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+   cbai.commandBufferCount = 1;
+   CK(vkAllocateCommandBuffers(t.dev, &cbai, &cmd2), "Cmd2");
 
    const struct tcase cases[] = {
       {"prim_1x_4x_1x", {{.nd = 3, .d = {D(1, 0), D(4, 1), D(1, 2)}}}, 1},
@@ -336,15 +356,25 @@ main(int argc, char **argv)
        {{.secondary = 1, .ns = 1, .s = {{.nd = 1, .d = {D(4, 0)}}}},
         {.secondary = 1, .ns = 1, .s = {{.nd = 1, .d = {D(1, 1)}}}}}, 2},
       {"sec_mixed",
-       {{.secondary = 1, .ns = 1, .s = {{.nd = 2, .d = {D(1, 0), D(4, 1)}}}}}, 1,
-       .mixed = 1},
+       {{.secondary = 1, .ns = 1, .s = {{.nd = 2, .d = {D(1, 0), D(4, 1)}}}}}, 1},
+      {"sec_mixed_1414",
+       {{.secondary = 1, .ns = 1,
+         .s = {{.nd = 4, .d = {D(1, 0), D(4, 1), D(1, 2), D(4, 3)}}}}}, 1},
+      {"sec_mixed_call",
+       {{.secondary = 1, .ns = 3,
+         .s = {{.nd = 1, .d = {D(4, 0)}},
+               {.nd = 3, .d = {D(1, 1), D(4, 2), D(1, 3)}},
+               {.nd = 1, .d = {D(4, 4)}}}}}, 1},
+      {"resume_cb_4x_1x",
+       {{.nd = 1, .d = {D(4, 0)}}, {.nd = 1, .d = {D(1, 1)}}}, 2, .split = 1},
+      {"resume_cb_sec",
+       {{.secondary = 1, .ns = 1, .s = {{.nd = 2, .d = {D(1, 0), D(4, 1)}}}},
+        {.secondary = 1, .ns = 1, .s = {{.nd = 2, .d = {D(4, 2), D(1, 3)}}}}},
+       2, .split = 1},
    };
    int fails = 0;
-   for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-      if (cases[i].mixed && !getenv("VMR_MIXED"))
-         continue;
+   for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
       fails += run_case(&cases[i]);
-   }
    printf("RESULT %s\n", fails ? "FAIL" : "PASS");
    return fails ? 1 : 0;
 }
