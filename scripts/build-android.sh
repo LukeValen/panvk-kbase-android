@@ -46,7 +46,7 @@ mkdir -p "$DDIR"
 # default is derived from MESA (see bootstrap-host-tools.sh) and HOST_TOOLS overrides it.
 LOG="$BDIR.log"; RECONF=""; [ -f "$BDIR/build.ninja" ] && RECONF="--reconfigure"
 meson setup $RECONF "$BDIR" "$MESA" --cross-file "$BDIR.cross.ini" \
-  -Dbuildtype=release -Dplatforms=android,x11 -Dandroid-stub=true -Dandroid-strict=false \
+  -Dbuildtype=release -Dallow-fallback-for=libdrm -Dforce_fallback_for=libdrm -Dlibdrm:default_library=static -Dplatforms=android,x11 -Dandroid-stub=true -Dandroid-strict=false \
   -Dgallium-drivers= -Dvulkan-drivers=panfrost -Dpanfrost-kmds=kbase \
   -Dmesa-clc=system -Dprecomp-compiler=system -Dxlib-lease=disabled \
   -Degl=disabled -Dgles1=disabled -Dgles2=disabled -Dopengl=false \
