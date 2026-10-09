@@ -46,15 +46,24 @@ jobs:
           git -C work/mesa apply "$GITHUB_WORKSPACE/patches/android/016-anb-dma-buf-finder.patch"
           git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
           git -C work/mesa apply "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
-          # Avoid whole-device hangs: conservative release and cross-subqueue sync.
-          # Do not bypass patch failure; these safety fixes are mandatory.
-          for patch in \
-            "$GITHUB_WORKSPACE/patches/csf-v11/105-eden-kbase-synchronous-release.patch" \
-            "$GITHUB_WORKSPACE/patches/csf-v11/106-disable-kbase-cross-subqueue-gpu-waits.patch" \
-            "$GITHUB_WORKSPACE/patches/lemon-rc2/109-preserve-64bit-cs-address.patch"; do
-            git -C work/mesa apply --check "$patch"
-            git -C work/mesa apply "$patch"
-          done
+          # Conservative native-buffer release, with explicit queue drain.
+          git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/csf-v11/105-eden-kbase-synchronous-release.patch"
+          git -C work/mesa apply "$GITHUB_WORKSPACE/patches/csf-v11/105-eden-kbase-synchronous-release.patch"
+          # Checked semantic edit: the RC2 source changed context around the original patch.
+          python3 - <<'PYSAFE'
+          from pathlib import Path
+          import re
+          p=Path("work/mesa/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c")
+          src=p.read_text()
+          pattern=r'(DEBUG_GET_ONCE_BOOL_OPTION\(kbase_gpu_semaphore_waits,\s*"PANVK_KBASE_GPU_SEMAPHORE_WAITS",\s*)true(\s*\))'
+          updated,n=re.subn(pattern,lambda m:m.group(1)+"false"+m.group(2),src)
+          assert n == 1, f"PANVK Kbase GPU semaphore gate unexpected occurrence count={n}"
+          p.write_text(updated)
+          assert '"PANVK_KBASE_GPU_SEMAPHORE_WAITS", false' in updated
+          print("Kbase cross-subqueue GPU waits OFF by default")
+          PYSAFE
+          git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/lemon-rc2/109-preserve-64bit-cs-address.patch"
+          git -C work/mesa apply "$GITHUB_WORKSPACE/patches/lemon-rc2/109-preserve-64bit-cs-address.patch"
           # RC2's unrelated v9 patch has historical trailing whitespace. Check only the patched ANB/fence files.
           git -C work/mesa diff --check -- src/vulkan/runtime/vk_android.c src/panfrost/vulkan/panvk_vX_device.c src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
           git -C work/mesa diff --stat | tail -n 30
