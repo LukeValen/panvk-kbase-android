@@ -46,8 +46,17 @@ jobs:
           git -C work/mesa apply "$GITHUB_WORKSPACE/patches/android/016-anb-dma-buf-finder.patch"
           git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
           git -C work/mesa apply "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
+          # Avoid whole-device hangs: conservative release and cross-subqueue sync.
+          # Do not bypass patch failure; these safety fixes are mandatory.
+          for patch in \
+            "$GITHUB_WORKSPACE/patches/csf-v11/105-eden-kbase-synchronous-release.patch" \
+            "$GITHUB_WORKSPACE/patches/csf-v11/106-disable-kbase-cross-subqueue-gpu-waits.patch" \
+            "$GITHUB_WORKSPACE/patches/lemon-rc2/109-preserve-64bit-cs-address.patch"; do
+            git -C work/mesa apply --check "$patch"
+            git -C work/mesa apply "$patch"
+          done
           # RC2's unrelated v9 patch has historical trailing whitespace. Check only the patched ANB/fence files.
-          git -C work/mesa diff --check -- src/vulkan/runtime/vk_android.c src/panfrost/vulkan/panvk_vX_device.c
+          git -C work/mesa diff --check -- src/vulkan/runtime/vk_android.c src/panfrost/vulkan/panvk_vX_device.c src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
           git -C work/mesa diff --stat | tail -n 30
 
       - name: Compile Mesa host tools
@@ -90,9 +99,9 @@ jobs:
           so = pathlib.Path('build/src/panfrost/vulkan/libvulkan_panfrost.so')
           payload = so.read_bytes()
           sha = hashlib.sha256(payload).hexdigest()
-          meta = {'schemaVersion': 1, 'name': 'PanVK RC2 G615 Lemon ANB Fix', 'author': 'LukeValen (ANB/fence patches), zenithblue-oss (RC2), Mesa', 'packageVersion': '0.1.0-rc2-lemon-anbfix.1', 'vendor': 'Mesa', 'driverVersion': 'Mesa 26.3.0-devel / RC2 + Lemon ANB Fix', 'minApi': 35, 'libraryName': 'libvulkan_panfrost.so', 'abi': 'android-aarch64-bionic', 'backend': 'panvk-kbase', 'kernelInterface': 'mali_kbase', 'profile': 'g615-v11-csf', 'description': 'Experimental RC2-based Mali G615 Lemon/Eden ANB dma-buf and Kbase sync fix; not validated in-game.'}
-          source = {'upstream': 'zenithblue-oss/panvk-kbase-android', 'upstreamTag': 'panvk-kbase-v0.1.0-rc2', 'mesaCommit': '5a07217f034b3e50d8c7c7794f97a2df1742613b', 'upstreamSourceSha': pathlib.Path('.git/HEAD').read_text().strip(), 'patches': ['LukeValen/panvk-kbase-android:patches/android/016-anb-dma-buf-finder.patch', 'LukeValen/panvk-kbase-android:patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch'], 'binarySha256': sha}
-          out = pathlib.Path('PanVK-RC2-Lemon-G615-ANBfix.adpkg.zip')
+          meta = {'schemaVersion': 1, 'name': 'PanVK RC2 G615 Lemon Safety v2', 'author': 'LukeValen (ANB/fence patches), zenithblue-oss (RC2), Mesa', 'packageVersion': '0.1.0-rc2-lemon-safety.2', 'vendor': 'Mesa', 'driverVersion': 'Mesa 26.3.0-devel / RC2 + Kbase Safety v2', 'minApi': 35, 'libraryName': 'libvulkan_panfrost.so', 'abi': 'android-aarch64-bionic', 'backend': 'panvk-kbase', 'kernelInterface': 'mali_kbase', 'profile': 'g615-v11-csf', 'description': 'Experimental RC2 with MediaTek dma-buf, conservative native release, CPU cross-queue waits and 64-bit CS address fix. UNTESTED after unexpected phone restart; do not assume safe.'}
+          source = {'upstream': 'zenithblue-oss/panvk-kbase-android', 'upstreamTag': 'panvk-kbase-v0.1.0-rc2', 'mesaCommit': '5a07217f034b3e50d8c7c7794f97a2df1742613b', 'upstreamSourceSha': pathlib.Path('.git/HEAD').read_text().strip(), 'patches': ['LukeValen/panvk-kbase-android:patches/android/016-anb-dma-buf-finder.patch', 'LukeValen/panvk-kbase-android:patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch', 'LukeValen/panvk-kbase-android:patches/csf-v11/105-eden-kbase-synchronous-release.patch', 'LukeValen/panvk-kbase-android:patches/csf-v11/106-disable-kbase-cross-subqueue-gpu-waits.patch', 'LukeValen/panvk-kbase-android:patches/lemon-rc2/109-preserve-64bit-cs-address.patch'], 'binarySha256': sha}
+          out = pathlib.Path('PanVK-RC2-Lemon-G615-SAFETY-v2.adpkg.zip')
           with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
               z.writestr('libvulkan_panfrost.so', payload)
               z.writestr('meta.json', json.dumps(meta, indent=2) + '\n')
@@ -107,6 +116,6 @@ jobs:
       - name: Upload Lemon experimental driver
         uses: actions/upload-artifact@v4
         with:
-          name: PanVK-RC2-Lemon-G615-ANBfix
-          path: rc2-upstream/PanVK-RC2-Lemon-G615-ANBfix.adpkg.zip
+          name: PanVK-RC2-Lemon-G615-SAFETY-v2
+          path: rc2-upstream/PanVK-RC2-Lemon-G615-SAFETY-v2.adpkg.zip
           if-no-files-found: error
