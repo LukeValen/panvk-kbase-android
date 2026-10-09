@@ -66,13 +66,15 @@ jobs:
         run: |
           set -euxo pipefail
           cd rc2-upstream
+          # The older RC2 tag has no Android cross-build shims; reuse the fork's toolchain shims.
+          cp -a "$GITHUB_WORKSPACE/shims" ./shims
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           export MESON_WORKING_DIR="$PWD"
           export PKG_CONFIG_LIBDIR="$PWD/shims"
           CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n 1 || true)"
           if [ -z "$CLANG_DIR" ]; then CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n 1 || true)"; fi
           export CLANG_LIB_DIR="${CLANG_DIR:-$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/18/lib/linux/aarch64}"
-          envsubst < android.toml > android-cross.txt
+          envsubst < "$GITHUB_WORKSPACE/android.toml" > android-cross.txt
           meson setup build work/mesa --cross-file android-cross.txt -Dbuildtype=release -Db_ndebug=true -Dplatforms=android -Dandroid-stub=true -Dandroid-strict=false -Dandroid-libbacktrace=disabled -Dplatform-sdk-version=30 -Dglx=disabled -Dgbm=disabled -Degl=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled -Dglvnd=disabled -Dvalgrind=disabled '-Dgallium-drivers=' -Dshared-glapi=disabled -Dzstd=disabled -Dmesa-clc=system -Dprecomp-compiler=system -Dvulkan-drivers=panfrost -Dllvm=disabled -Dpanfrost-kmds=kbase
           meson compile -C build -j 4
 
