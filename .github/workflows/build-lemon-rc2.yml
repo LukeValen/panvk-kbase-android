@@ -1,0 +1,103 @@
+name: Build PanVK RC2 Lemon ANB Fix
+
+on:
+  push:
+    branches: [lemon-rc2-bufferfix]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - name: Checkout LukeValen patches
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout frozen upstream RC2 sources
+        uses: actions/checkout@v4
+        with:
+          repository: zenithblue-oss/panvk-kbase-android
+          ref: panvk-kbase-v0.1.0-rc2
+          path: rc2-upstream
+          persist-credentials: false
+
+      - name: Install Mesa dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential llvm-20-dev libclang-20-dev libclc-20-dev libllvmspirvlib-20-dev libelf-dev spirv-tools bison flex libdrm-dev pkg-config gettext
+          python3 -m pip install --user mako PyYAML meson ninja packaging
+
+      - name: Build upstream RC2 patch stack and apply Lemon Android fixes
+        run: |
+          set -euxo pipefail
+          cd rc2-upstream
+          test "$(git describe --tags --exact-match)" = "panvk-kbase-v0.1.0-rc2"
+          ./scripts/fetch-mesa.sh
+          ./scripts/apply-patches.sh --profile g615-v11-csf
+          git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/android/016-anb-dma-buf-finder.patch"
+          git -C work/mesa apply "$GITHUB_WORKSPACE/patches/android/016-anb-dma-buf-finder.patch"
+          git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
+          git -C work/mesa apply "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
+          git -C work/mesa diff --check
+          git -C work/mesa diff --stat | tail -n 30
+
+      - name: Compile Mesa host tools
+        run: |
+          set -euxo pipefail
+          cd rc2-upstream
+          meson setup build-host work/mesa -Dbuildtype=release -Db_ndebug=true '-Dplatforms=[]' '-Dgallium-drivers=[]' '-Dvulkan-drivers=[]' -Dtools=panfrost -Dprecomp-compiler=enabled -Dinstall-precomp-compiler=true -Dllvm=enabled -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+          ninja -C build-host src/compiler/clc/mesa_clc src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+          ln -sf "$PWD/build-host/src/compiler/clc/mesa_clc" "$PWD/build-host/src/compiler/clc/mesa-clc"
+          ln -sf "$PWD/build-host/src/compiler/spirv/vtn_bindgen2" "$PWD/build-host/src/compiler/spirv/vtn-bindgen2"
+          echo "$PWD/build-host/src/compiler/clc" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
+
+      - name: Build RC2 Android Vulkan library with ANB fixes
+        run: |
+          set -euxo pipefail
+          cd rc2-upstream
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export MESON_WORKING_DIR="$PWD"
+          export PKG_CONFIG_LIBDIR="$PWD/shims"
+          CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n 1 || true)"
+          if [ -z "$CLANG_DIR" ]; then CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n 1 || true)"; fi
+          export CLANG_LIB_DIR="${CLANG_DIR:-$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/18/lib/linux/aarch64}"
+          envsubst < android.toml > android-cross.txt
+          meson setup build work/mesa --cross-file android-cross.txt -Dbuildtype=release -Db_ndebug=true -Dplatforms=android -Dandroid-stub=true -Dandroid-strict=false -Dandroid-libbacktrace=disabled -Dplatform-sdk-version=30 -Dglx=disabled -Dgbm=disabled -Degl=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled -Dglvnd=disabled -Dvalgrind=disabled '-Dgallium-drivers=' -Dshared-glapi=disabled -Dzstd=disabled -Dmesa-clc=system -Dprecomp-compiler=system -Dvulkan-drivers=panfrost -Dllvm=disabled -Dpanfrost-kmds=kbase
+          meson compile -C build -j 4
+
+      - name: Validate and package RC2-derived test driver
+        run: |
+          set -euxo pipefail
+          cd rc2-upstream
+          SO=build/src/panfrost/vulkan/libvulkan_panfrost.so
+          test -s "$SO"
+          strings "$SO" | grep -Fq '[ANB-FD]'
+          python3 - <<'PY'
+          import hashlib, io, json, pathlib, zipfile
+          so = pathlib.Path('build/src/panfrost/vulkan/libvulkan_panfrost.so')
+          payload = so.read_bytes()
+          sha = hashlib.sha256(payload).hexdigest()
+          meta = {'schemaVersion': 1, 'name': 'PanVK RC2 G615 Lemon ANB Fix', 'author': 'LukeValen (ANB/fence patches), zenithblue-oss (RC2), Mesa', 'packageVersion': '0.1.0-rc2-lemon-anbfix.1', 'vendor': 'Mesa', 'driverVersion': 'Mesa 26.3.0-devel / RC2 + Lemon ANB Fix', 'minApi': 35, 'libraryName': 'libvulkan_panfrost.so', 'abi': 'android-aarch64-bionic', 'backend': 'panvk-kbase', 'kernelInterface': 'mali_kbase', 'profile': 'g615-v11-csf', 'description': 'Experimental RC2-based Mali G615 Lemon/Eden ANB dma-buf and Kbase sync fix; not validated in-game.'}
+          source = {'upstream': 'zenithblue-oss/panvk-kbase-android', 'upstreamTag': 'panvk-kbase-v0.1.0-rc2', 'mesaCommit': '5a07217f034b3e50d8c7c7794f97a2df1742613b', 'upstreamSourceSha': pathlib.Path('.git/HEAD').read_text().strip(), 'patches': ['LukeValen/panvk-kbase-android:patches/android/016-anb-dma-buf-finder.patch', 'LukeValen/panvk-kbase-android:patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch'], 'binarySha256': sha}
+          out = pathlib.Path('PanVK-RC2-Lemon-G615-ANBfix.adpkg.zip')
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              z.writestr('libvulkan_panfrost.so', payload)
+              z.writestr('meta.json', json.dumps(meta, indent=2) + '\n')
+              z.writestr('SOURCE.json', json.dumps(source, indent=2) + '\n')
+              z.writestr('SHA256SUMS.txt', sha + '  libvulkan_panfrost.so\n')
+          with zipfile.ZipFile(out) as z:
+              assert z.testzip() is None
+              assert hashlib.sha256(z.read('libvulkan_panfrost.so')).hexdigest() == sha
+          print('PACKAGE', out, 'BINARY_SHA256', sha, 'SIZE', out.stat().st_size)
+          PY
+
+      - name: Upload Lemon experimental driver
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanVK-RC2-Lemon-G615-ANBfix
+          path: rc2-upstream/PanVK-RC2-Lemon-G615-ANBfix.adpkg.zip
+          if-no-files-found: error
