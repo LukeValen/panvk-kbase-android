@@ -1,10 +1,10 @@
 # PanVK Kbase Android — Eden Switch Emulator Fork
 
-> **Current fork scope: Eden Android / Nintendo Switch emulation only.**
+> **Current fork scope: Android Nintendo Switch emulators (Eden, Lemon Lite and Strato Mali).**
 >
-> This fork is currently developed as a custom Vulkan driver for the
-> **Eden Android Switch emulator** on Mali-G615/Kbase-CSF devices. It is not
-> currently maintained as a general-purpose Winlator, Termux:X11, GameHub or
+> This fork develops experimental custom Vulkan drivers on Mali-G615/Kbase-CSF.
+> Dedicated RC2 Safety v2 packages are available for Lemon Lite and Strato Mali.
+> It is not maintained as a general-purpose Winlator, Termux:X11, GameHub or
 > desktop compatibility fork.
 
 This repository is a fork of
@@ -12,6 +12,19 @@ This repository is a fork of
 and keeps the Mesa/PanVK and Kbase work from the upstream project. Eden-specific
 integration, Android Native Buffer fixes, synchronization fixes and validation
 are developed here by **LukeValen**.
+
+## RC2 Safety v2 downloads
+
+Experimental **Mali-G615 MC6** Vulkan driver packages:
+
+- **Strato Mali:** [PanVK RC2 G615 Strato Mali Safety v2](https://github.com/LukeValen/panvk-kbase-android/releases/tag/panvk-g615-rc2-strato-safety-v2) — flat ZIP with metadata adapted to Strato's driver installer.
+- **Lemon Lite:** [PanVK RC2 G615 Lemon Safety v2](https://github.com/LukeValen/panvk-kbase-android/releases/tag/panvk-g615-rc2-lemon-safety-v2) — Lemon-compatible driver ZIP.
+
+Both releases contain the same underlying PanVK library, based on RC2 with ANB and conservative Kbase synchronization fixes. Celeste launched successfully on the reference device with Lemon Lite; the Strato package has **not yet been validated in-game**. Earlier experimental builds caused a kernel panic, so use at your own risk and keep the original Vulkan driver available.
+
+## Support the developer
+
+☕ The developer wanted to give you a good time, and in return you can offer them a coffee in https://ko-fi.com/lukevalen/donate 🫐
 
 ## Eden compatibility
 
