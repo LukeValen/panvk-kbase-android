@@ -34,13 +34,20 @@ jobs:
           set -euxo pipefail
           cd rc2-upstream
           test "$(git describe --tags --exact-match)" = "panvk-kbase-v0.1.0-rc2"
-          ./scripts/fetch-mesa.sh
+          # Avoid cloning the complete Mesa history: RC2 is pinned to one SHA.
+          MESA_SHA="$(python3 -c 'import json; print(json.load(open("sources.lock"))["mesaCommit"])')"
+          mkdir -p work/mesa
+          git -C work/mesa init
+          git -C work/mesa remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
+          git -C work/mesa fetch --depth 1 origin "$MESA_SHA"
+          git -C work/mesa checkout --detach "$MESA_SHA"
           ./scripts/apply-patches.sh --profile g615-v11-csf
           git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/android/016-anb-dma-buf-finder.patch"
           git -C work/mesa apply "$GITHUB_WORKSPACE/patches/android/016-anb-dma-buf-finder.patch"
           git -C work/mesa apply --check "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
           git -C work/mesa apply "$GITHUB_WORKSPACE/patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch"
-          git -C work/mesa diff --check
+          # RC2's unrelated v9 patch has historical trailing whitespace. Check only the patched ANB/fence files.
+          git -C work/mesa diff --check -- src/vulkan/runtime/vk_android.c src/panfrost/vulkan/panvk_vX_device.c
           git -C work/mesa diff --stat | tail -n 30
 
       - name: Compile Mesa host tools
