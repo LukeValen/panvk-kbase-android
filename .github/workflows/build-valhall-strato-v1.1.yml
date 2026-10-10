@@ -1,0 +1,154 @@
+name: Build PanVK Valhall LukeValen Strato 1.1 Safety
+
+on:
+  push:
+    branches:
+      - valhall-strato-v1.1-fc-safety
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  valhall-strato:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - name: Checkout LukeValen Safety patches
+        uses: actions/checkout@v4
+        with:
+          path: safety
+
+      - name: Checkout Guna PanVK 1.1.0-FC
+        uses: actions/checkout@v4
+        with:
+          repository: GunaCharanTeja/panvk-kbase-android
+          ref: 45071e8843ea057dd153c800c57ed8fc3d6d94c6
+          path: base
+          persist-credentials: false
+
+      - name: Verify pinned version and prerequisites
+        run: |
+          set -euxo pipefail
+          test "$(git -C base rev-parse HEAD)" = 45071e8843ea057dd153c800c57ed8fc3d6d94c6
+          python3 -c 'import json; a=json.load(open("base/sources.lock")); assert a["mesaCommit"]=="5a07217f034b3e50d8c7c7794f97a2df1742613b"'
+          test -f safety/patches/android/016-anb-dma-buf-finder.patch
+          test -f safety/patches/csf-v11/105-eden-kbase-synchronous-release.patch
+
+      - name: Install Mesa build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential llvm-20-dev libclang-20-dev libclc-20-dev \
+            libllvmspirvlib-20-dev libelf-dev spirv-tools bison flex \
+            libdrm-dev pkg-config gettext
+          python3 -m pip install --user --upgrade mako PyYAML meson ninja packaging
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch exact Mesa and apply Guna 1.1.0-FC patches
+        run: |
+          set -euxo pipefail
+          cd base
+          ./scripts/fetch-mesa.sh
+          ./scripts/apply-patches.sh --profile g615-v11-csf
+
+      - name: Apply LukeValen Switch and Safety v2 patches
+        run: |
+          set -euxo pipefail
+          python3 safety/scripts/strato-valhall-safe-overlay.py
+          git -C base/work/mesa diff --stat
+
+      - name: Compile Mesa host tools
+        run: |
+          set -euxo pipefail
+          cd base
+          meson setup build-host work/mesa \
+            -Dbuildtype=release -Db_ndebug=true '-Dplatforms=[]' \
+            '-Dgallium-drivers=[]' '-Dvulkan-drivers=[]' \
+            -Dtools=panfrost -Dprecomp-compiler=enabled \
+            -Dinstall-precomp-compiler=true -Dllvm=enabled \
+            -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+          ninja -C build-host src/compiler/clc/mesa_clc \
+            src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+          ln -sf "$PWD/build-host/src/compiler/clc/mesa_clc" "$PWD/build-host/src/compiler/clc/mesa-clc"
+          ln -sf "$PWD/build-host/src/compiler/spirv/vtn_bindgen2" "$PWD/build-host/src/compiler/spirv/vtn-bindgen2"
+          echo "$PWD/build-host/src/compiler/clc" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
+
+      - name: Configure Android AArch64 PanVK
+        run: |
+          set -euxo pipefail
+          cd base
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export MESON_WORKING_DIR="$PWD"
+          export PKG_CONFIG_LIBDIR="$PWD/shims"
+          CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
+          if [ -z "$CLANG_DIR" ]; then
+            CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
+          fi
+          test -n "$CLANG_DIR"
+          export CLANG_LIB_DIR="$CLANG_DIR"
+          envsubst < android.toml > android-cross.txt
+          meson setup build work/mesa --cross-file android-cross.txt \
+            -Dbuildtype=release -Db_ndebug=true -Dplatforms=android \
+            -Dandroid-stub=true -Dandroid-strict=false \
+            -Dandroid-libbacktrace=disabled -Dplatform-sdk-version=30 \
+            -Dglx=disabled -Dgbm=disabled -Degl=disabled \
+            -Dopengl=false -Dgles1=disabled -Dgles2=disabled \
+            -Dglvnd=disabled -Dvalgrind=disabled '-Dgallium-drivers=' \
+            -Dshared-glapi=disabled -Dzstd=disabled \
+            -Dmesa-clc=system -Dprecomp-compiler=system \
+            -Dvulkan-drivers=panfrost -Dllvm=disabled -Dpanfrost-kmds=kbase
+
+      - name: Build PanVK 1.1.0-FC with Safety v2
+        run: |
+          set -euxo pipefail
+          meson compile -C base/build -j 4
+
+      - name: Package Strato Mali compatible driver
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,zipfile,struct
+          so=pathlib.Path("base/build/src/panfrost/vulkan/libvulkan_panfrost.so")
+          blob=so.read_bytes()
+          assert blob[:4]==b"\x7fELF" and struct.unpack_from("<H",blob,18)[0]==183
+          meta={
+             "schemaVersion":1,
+             "name":"PanVk Valhall LukeValen Strato",
+             "author":"LukeValen (Switch/Safety v2), GunaCharanTeja (1.1.0-FC), Mesa",
+             "packageVersion":"1.1.0-FC-strato-safety.2",
+             "vendor":"Mesa",
+             "driverVersion":"Mesa 26.3.0-devel / PanVK 1.1.0-FC + Safety v2",
+             "minApi":35,
+             "description":"Experimental Mali-G615 Valhall CSF PanVK 1.1.0-FC with Switch Android Native Buffer dma-buf, conservative Kbase fences, CPU cross-subqueue waits, and 64-bit CS address safety fixes.",
+             "libraryName":"libvulkan_panfrost.so"
+          }
+          out=pathlib.Path("PanVk Valhall LukeValen Strato.zip")
+          with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+             z.writestr("meta.json",json.dumps(meta,indent=2)+"\n")
+             z.writestr("libvulkan_panfrost.so",blob)
+          with zipfile.ZipFile(out) as z:
+             assert z.testzip() is None
+             assert z.namelist()==["meta.json","libvulkan_panfrost.so"]
+             assert z.read("libvulkan_panfrost.so")==blob
+             assert set(json.loads(z.read("meta.json")))==set(meta)
+          hashes=f"{hashlib.sha256(out.read_bytes()).hexdigest()}  {out.name}\n{hashlib.sha256(blob).hexdigest()}  libvulkan_panfrost.so\n"
+          pathlib.Path("SHA256SUMS.txt").write_text(hashes)
+          print(hashes,flush=True)
+          print("BUILT",out,out.stat().st_size,flush=True)
+          PY
+
+      - name: Upload Strato driver package and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanVk-Valhall-LukeValen-Strato-v1.1-Safety-v2
+          path: |
+            PanVk Valhall LukeValen Strato.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
