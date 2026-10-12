@@ -95,6 +95,7 @@ jobs:
           export CLANG_LIB_DIR="$CLANG_DIR"
           # RC3 uses meson/android-aarch64.ini (NOT android.toml).
           export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          echo "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
           cp meson/android-aarch64.ini android-cross.txt
           meson setup build work/mesa --cross-file android-cross.txt \
             -Dbuildtype=release -Db_ndebug=true -Dplatforms=android \
