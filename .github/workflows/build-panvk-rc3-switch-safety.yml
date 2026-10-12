@@ -86,7 +86,7 @@ jobs:
           cd base
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           export MESON_WORKING_DIR="$PWD"
-          export PKG_CONFIG_LIBDIR="$PWD/shims"
+          export PKG_CONFIG_LIBDIR="$GITHUB_WORKSPACE/safety/shims"
           CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
           if [ -z "$CLANG_DIR" ]; then
             CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
