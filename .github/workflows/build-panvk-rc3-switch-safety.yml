@@ -80,13 +80,37 @@ jobs:
           echo "$PWD/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
           echo "$PWD/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
 
+      - name: Build actual Bionic libdrm for Android ARM64
+        run: |
+          set -euxo pipefail
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cp base/meson/android-aarch64.ini libdrm-android-cross.ini
+          # Pin real upstream libdrm sources, verified by SHA256.
+          curl -fL --retry 3 \
+            https://gitlab.freedesktop.org/mesa/drm/-/archive/libdrm-2.4.124/drm-libdrm-2.4.124.tar.gz \
+            -o libdrm-2.4.124.tar.gz
+          echo "543544aeadf0c8bea920d00f75e5dc2ff2ac3702e034651a11db40d3ec38becf  libdrm-2.4.124.tar.gz" | sha256sum -c -
+          mkdir -p libdrm-source
+          tar -xzf libdrm-2.4.124.tar.gz --strip-components=1 -C libdrm-source
+          meson setup libdrm-build libdrm-source \
+            --cross-file libdrm-android-cross.ini \
+            --prefix "$GITHUB_WORKSPACE/base/android-deps" \
+            --libdir lib -Ddefault_library=static -Dbuildtype=release \
+            -Dauto_features=disabled -Dtests=false -Dudev=false
+          meson compile -C libdrm-build -j 4
+          meson install -C libdrm-build
+          test -s base/android-deps/include/xf86drm.h
+          test -s base/android-deps/lib/libdrm.a
+          test -s base/android-deps/lib/pkgconfig/libdrm.pc
+          cat base/android-deps/lib/pkgconfig/libdrm.pc
+
       - name: Configure Android AArch64 PanVK
         run: |
           set -euxo pipefail
           cd base
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           export MESON_WORKING_DIR="$PWD"
-          export PKG_CONFIG_LIBDIR="$GITHUB_WORKSPACE/safety/shims"
+          export PKG_CONFIG_LIBDIR="$GITHUB_WORKSPACE/base/android-deps/lib/pkgconfig:$GITHUB_WORKSPACE/safety/shims"
           CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
           if [ -z "$CLANG_DIR" ]; then
             CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
