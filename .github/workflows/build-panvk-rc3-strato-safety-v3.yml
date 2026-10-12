@@ -1,0 +1,194 @@
+name: Build PanVK RC3 Strato Presentation Safety v3
+
+on:
+  push:
+    branches:
+      - rc3-strato-presentfix-v3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  valhall-strato:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - name: Checkout LukeValen Safety patches
+        uses: actions/checkout@v4
+        with:
+          path: safety
+
+      - name: Checkout upstream PanVK RC3
+        uses: actions/checkout@v4
+        with:
+          repository: zenithblue-oss/panvk-kbase-android
+          ref: fd6ed91eff1c8d3a83307a2348b959bb93797011
+          path: base
+          persist-credentials: false
+
+      - name: Verify pinned version and prerequisites
+        run: |
+          set -euxo pipefail
+          test "$(git -C base rev-parse HEAD)" = fd6ed91eff1c8d3a83307a2348b959bb93797011
+          python3 -c 'import json; a=json.load(open("base/sources.lock")); assert a["mesaCommit"]=="5a07217f034b3e50d8c7c7794f97a2df1742613b"'
+          test -f safety/patches/android/016-anb-dma-buf-finder.patch
+          test -f safety/patches/csf-v11/105-eden-kbase-synchronous-release.patch
+
+      - name: Install Mesa build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential llvm-20-dev libclang-20-dev libclc-20-dev \
+            libllvmspirvlib-20-dev libelf-dev spirv-tools bison flex \
+            libdrm-dev pkg-config gettext
+          python3 -m pip install --user --upgrade mako PyYAML meson ninja packaging
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch Mesa and apply all upstream RC3 patches
+        run: |
+          set -euxo pipefail
+          cd base
+          ./scripts/fetch-mesa.sh
+          ./scripts/apply-patches.sh --profile g615-v11-csf
+
+      - name: Apply LukeValen Switch and Safety v2 patches
+        run: |
+          set -euxo pipefail
+          python3 safety/scripts/strato-valhall-safe-overlay.py
+          python3 safety/scripts/strato-rc3-present-fix.py
+          git -C base/work/mesa diff --stat
+
+      - name: Compile Mesa host tools
+        run: |
+          set -euxo pipefail
+          cd base
+          meson setup build-host work/mesa \
+            -Dbuildtype=release -Db_ndebug=true '-Dplatforms=[]' \
+            '-Dgallium-drivers=[]' '-Dvulkan-drivers=[]' \
+            -Dtools=panfrost -Dprecomp-compiler=enabled \
+            -Dinstall-precomp-compiler=true -Dllvm=enabled \
+            -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+          ninja -C build-host src/compiler/clc/mesa_clc \
+            src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+          ln -sf "$PWD/build-host/src/compiler/clc/mesa_clc" "$PWD/build-host/src/compiler/clc/mesa-clc"
+          ln -sf "$PWD/build-host/src/compiler/spirv/vtn_bindgen2" "$PWD/build-host/src/compiler/spirv/vtn-bindgen2"
+          echo "$PWD/build-host/src/compiler/clc" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
+
+      - name: Build actual Bionic libdrm for Android ARM64
+        run: |
+          set -euxo pipefail
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cp base/meson/android-aarch64.ini libdrm-android-cross.ini
+          # Pin real upstream libdrm sources, verified by SHA256.
+          curl -fL --retry 3 \
+            https://gitlab.freedesktop.org/mesa/drm/-/archive/libdrm-2.4.124/drm-libdrm-2.4.124.tar.gz \
+            -o libdrm-2.4.124.tar.gz
+          echo "543544aeadf0c8bea920d00f75e5dc2ff2ac3702e034651a11db40d3ec38becf  libdrm-2.4.124.tar.gz" | sha256sum -c -
+          mkdir -p libdrm-source
+          tar -xzf libdrm-2.4.124.tar.gz --strip-components=1 -C libdrm-source
+          meson setup libdrm-build libdrm-source \
+            --cross-file libdrm-android-cross.ini \
+            --prefix "$GITHUB_WORKSPACE/base/android-deps" \
+            --libdir lib -Ddefault_library=static -Dbuildtype=release \
+            -Dauto_features=disabled -Dtests=false -Dudev=false
+          meson compile -C libdrm-build -j 4
+          meson install -C libdrm-build
+          test -s base/android-deps/include/xf86drm.h
+          test -s base/android-deps/lib/libdrm.a
+          test -s base/android-deps/lib/pkgconfig/libdrm.pc
+          cat base/android-deps/lib/pkgconfig/libdrm.pc
+
+      - name: Configure Android AArch64 PanVK
+        run: |
+          set -euxo pipefail
+          cd base
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export MESON_WORKING_DIR="$PWD"
+          export PKG_CONFIG_LIBDIR="$GITHUB_WORKSPACE/base/android-deps/lib/pkgconfig:$GITHUB_WORKSPACE/safety/shims"
+          CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
+          if [ -z "$CLANG_DIR" ]; then
+            CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
+          fi
+          test -n "$CLANG_DIR"
+          export CLANG_LIB_DIR="$CLANG_DIR"
+          # RC3 uses meson/android-aarch64.ini (NOT android.toml).
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          echo "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          cp meson/android-aarch64.ini android-cross.txt
+          meson setup build work/mesa --cross-file android-cross.txt \
+            -Dbuildtype=release -Db_ndebug=true -Dplatforms=android \
+            -Dandroid-stub=true -Dandroid-strict=false \
+            -Dandroid-libbacktrace=disabled -Dplatform-sdk-version=30 \
+            -Dglx=disabled -Dgbm=disabled -Degl=disabled \
+            -Dopengl=false -Dgles1=disabled -Dgles2=disabled \
+            -Dglvnd=disabled -Dvalgrind=disabled '-Dgallium-drivers=' \
+            -Dshared-glapi=disabled -Dzstd=disabled \
+            -Dmesa-clc=system -Dprecomp-compiler=system \
+            -Dvulkan-drivers=panfrost -Dllvm=disabled -Dpanfrost-kmds=kbase
+
+      - name: Build PanVK RC3 with Safety v2
+        run: |
+          set -euxo pipefail
+          meson compile -C base/build -j 4
+
+      - name: Package Strato RC3 v3 driver ZIP
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,zipfile,struct
+          so=pathlib.Path("base/build/src/panfrost/vulkan/libvulkan_panfrost.so")
+          blob=so.read_bytes()
+          assert blob[:4]==b"\x7fELF" and struct.unpack_from("<H",blob,18)[0]==183
+          names={
+             "Strato-Mali":("PanVK RC3 Safety v3 - Strato Mali","PanVK-RC3-Strato-Mali-SAFETY-v3.zip")
+          }
+          digests=[]
+          for target,(name,filename) in names.items():
+             meta={
+                "schemaVersion":1,
+                "name":name,
+                "author":"LukeValen (Switch/Safety v2), zenithblue-oss (RC3), Mesa",
+                "packageVersion":"0.1.0-rc3-"+target.lower()+"-safety.3",
+                "vendor":"Mesa",
+                "driverVersion":"Mesa 26.3.0-devel / PanVK RC3 + Kbase Safety v3",
+                "minApi":35,
+                "description":"Experimental PanVK RC3 Valhall Kbase. Android Native Buffer DMA-BUF selection; QueueWaitIdle/native fence -1 release; CPU cross-subqueue semaphore waits by default; 64-bit CS addresses. Not yet device-tested in this emulator.",
+                "libraryName":"libvulkan_panfrost.so"
+             }
+             # Lemon accepts these extended fields, unlike the strict Strato importer.
+             if target=="Lemon":
+                meta.update({"abi":"android-aarch64-bionic","backend":"panvk-kbase","kernelInterface":"mali_kbase","profile":"g615-v11-csf"})
+             output=pathlib.Path(filename)
+             with zipfile.ZipFile(output,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+                z.writestr("meta.json",json.dumps(meta,indent=2)+"\n")
+                z.writestr("libvulkan_panfrost.so",blob)
+             with zipfile.ZipFile(output) as z:
+                assert z.testzip() is None
+                assert set(z.namelist())=={"meta.json","libvulkan_panfrost.so"}
+                assert z.read("libvulkan_panfrost.so")==blob
+                check=json.loads(z.read("meta.json"))
+                assert check["name"]==name and check["libraryName"]=="libvulkan_panfrost.so"
+                if target!="Lemon":
+                   assert len(check)==9
+             digests.append(f"{hashlib.sha256(output.read_bytes()).hexdigest()}  {filename}")
+             print("VALIDATED",output,output.stat().st_size,flush=True)
+          digests.append(f"{hashlib.sha256(blob).hexdigest()}  libvulkan_panfrost.so")
+          pathlib.Path("SHA256SUMS.txt").write_text("\n".join(digests)+"\n")
+          print("\n".join(digests),flush=True)
+          PY
+
+      - name: Upload Strato RC3 v3 ZIP package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanVK-RC3-Strato-Mali-SAFETY-v3
+          path: |
+            PanVK-RC3-Strato-Mali-SAFETY-v3.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
