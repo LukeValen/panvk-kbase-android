@@ -1,4 +1,4 @@
-name: Build PanVK RC3 Strato Presentation Safety v3
+name: Build PanVK RC3 Strato Presentation Safety v4
 
 on:
   push:
@@ -138,7 +138,7 @@ jobs:
           set -euxo pipefail
           meson compile -C base/build -j 4
 
-      - name: Package Strato RC3 v3 driver ZIP
+      - name: Package Strato RC3 v4 driver ZIP
         run: |
           set -euxo pipefail
           python3 - <<'PY'
@@ -147,7 +147,7 @@ jobs:
           blob=so.read_bytes()
           assert blob[:4]==b"\x7fELF" and struct.unpack_from("<H",blob,18)[0]==183
           names={
-             "Strato-Mali":("PanVK RC3 Safety v3 - Strato Mali","PanVK-RC3-Strato-Mali-SAFETY-v3.zip")
+             "Strato-Mali":("PanVK RC3 Safety v4 - Strato Mali","PanVK-RC3-Strato-Mali-SAFETY-v4.zip")
           }
           digests=[]
           for target,(name,filename) in names.items():
@@ -155,9 +155,9 @@ jobs:
                 "schemaVersion":1,
                 "name":name,
                 "author":"LukeValen (Switch/Safety v2), zenithblue-oss (RC3), Mesa",
-                "packageVersion":"0.1.0-rc3-"+target.lower()+"-safety.3",
+                "packageVersion":"0.1.0-rc3-"+target.lower()+"-safety.4",
                 "vendor":"Mesa",
-                "driverVersion":"Mesa 26.3.0-devel / PanVK RC3 + Kbase Safety v3",
+                "driverVersion":"Mesa 26.3.0-devel / PanVK RC3 + Kbase Safety v4",
                 "minApi":35,
                 "description":"Experimental PanVK RC3 Valhall Kbase. Android Native Buffer DMA-BUF selection; QueueWaitIdle/native fence -1 release; CPU cross-subqueue semaphore waits by default; 64-bit CS addresses. Not yet device-tested in this emulator.",
                 "libraryName":"libvulkan_panfrost.so"
@@ -184,11 +184,11 @@ jobs:
           print("\n".join(digests),flush=True)
           PY
 
-      - name: Upload Strato RC3 v3 ZIP package
+      - name: Upload Strato RC3 v4 ZIP package
         uses: actions/upload-artifact@v4
         with:
-          name: PanVK-RC3-Strato-Mali-SAFETY-v3
+          name: PanVK-RC3-Strato-Mali-SAFETY-v4
           path: |
-            PanVK-RC3-Strato-Mali-SAFETY-v3.zip
+            PanVK-RC3-Strato-Mali-SAFETY-v4.zip
             SHA256SUMS.txt
           if-no-files-found: error

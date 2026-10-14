@@ -24,7 +24,7 @@ patch("MediaTek/Android native-buffer FD finder",
       "[ANB-FD] probing", "src/vulkan/runtime/vk_android.c")
 patch("Kbase skip DRM syncobj copy callback",
       "patches/csf-v11/103-disable-drm-sync-copy-on-kbase.patch",
-      "physical_device->kbase_node_path[0]", "src/panfrost/vulkan/panvk_vX_device.c")
+      "device->vk.copy_sync_payloads = physical_device->kbase_node_path[0]", "src/panfrost/vulkan/panvk_vX_device.c")
 patch("Safe synchronous native-buffer release",
       "patches/csf-v11/105-eden-kbase-synchronous-release.patch",
       "[ANB-SYNC] Eden/Kbase synchronous release", "src/vulkan/runtime/vk_android.c")
@@ -41,6 +41,7 @@ print("SAFETY Kbase GPU cross-subqueue waits OFF by default",flush=True)
 vk = (mesa/"src/vulkan/runtime/vk_android.c").read_text()
 assert "QueueWaitIdle(_queue)" in vk and "*pNativeFenceFd = -1;" in vk
 assert "[ANB-FD] probing" in vk
-assert "physical_device->kbase_node_path[0]" in (mesa/"src/panfrost/vulkan/panvk_vX_device.c").read_text()
+device_source = (mesa/"src/panfrost/vulkan/panvk_vX_device.c").read_text()
+assert re.search(r"device->vk\.copy_sync_payloads = physical_device->kbase_node_path\[0\]\s*\? NULL\s*:\s*vk_drm_syncobj_copy_payloads;", device_source), "Kbase DRM-copy disable patch missing"
 assert "uint64_t fn_addr =" in (mesa/"src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c").read_text()
 print("ALL SAFETY POSTCONDITIONS PASSED",flush=True)
