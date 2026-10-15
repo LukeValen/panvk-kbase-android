@@ -1,165 +1,142 @@
-name: Build PanVK Mali-G615 Driver
+name: Build PanVK 1.1.4-FC Switch Safety
 
 on:
   push:
-    branches-ignore: [ "switch-g615-1.1.4-fc-safety" ]
-  pull_request:
-    branches: [ "**" ]
+    branches:
+      - switch-g615-1.1.4-fc-safety
   workflow_dispatch:
 
-env:
-  # Package version; also shown as the driver name in DXVK HUD / MangoHud.
-  PANVK_RELEASE: "1.1.4-FC"
+permissions:
+  contents: read
 
 jobs:
-  build-panvk-android:
-    name: Build PanVK G615 (${{ matrix.flavor }})
+  valhall-strato:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        flavor: [adrenotools, x11]
-
+    timeout-minutes: 110
     steps:
-      - name: Checkout repository
+      - name: Checkout Switch Safety sources
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          path: base
+          fetch-depth: 0
 
-      - name: Install Build Dependencies
+      - name: Verify pinned 1.1.4-FC base
+        run: |
+          set -euxo pipefail
+          git -C base merge-base --is-ancestor aa01eb0cd2d5e622ffbaa3a1e097857fe8ed8719 HEAD
+          python3 -c 'import json; a=json.load(open("base/sources.lock")); assert a["mesaCommit"]=="5a07217f034b3e50d8c7c7794f97a2df1742613b"'
+
+      - name: Install Mesa build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
           NEEDRESTART_MODE: a
         run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          set -euxo pipefail
+          sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-              -o Dpkg::Options::="--force-confdef" \
-              -o Dpkg::Options::="--force-confold" \
-              build-essential \
-              llvm-20-dev \
-              libclang-20-dev \
-              libclc-20-dev \
-              libllvmspirvlib-20-dev \
-              libelf-dev \
-              spirv-tools \
-              bison \
-              flex \
-              libdrm-dev \
-              pkg-config \
-              gettext
-          python -m pip install --upgrade pip
-          pip install mako PyYAML meson ninja packaging
+            build-essential llvm-20-dev libclang-20-dev libclc-20-dev \
+            libllvmspirvlib-20-dev libelf-dev spirv-tools bison flex \
+            libdrm-dev pkg-config gettext
+          python3 -m pip install --user --upgrade mako PyYAML meson ninja packaging
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Verify sources.lock
+      - name: Apply upstream 1.1.4-FC and Switch Safety patches
         run: |
-          python3 -c "import json; d=json.load(open('sources.lock')); assert len(d['mesaCommit'])==40, d"
-
-      - name: Fetch pinned Mesa
-        run: ./scripts/fetch-mesa.sh
-
-      - name: Apply PanVK G615 Patches (All qualified phases)
-        run: ./scripts/apply-patches.sh --profile g615-v11-csf
-
-      - name: Stamp driver version
-        # driverInfo (DXVK HUD, MangoHud, vulkaninfo) shows this release.
-        run: |
+          set -euxo pipefail
+          cd base
+          mkdir -p work/mesa
+          git -C work/mesa init
+          git -C work/mesa remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
+          ./scripts/fetch-mesa.sh
+          ./scripts/apply-patches.sh --profile g615-v11-csf --switch-safety
           f=work/mesa/src/panfrost/vulkan/panvk_vX_physical_device.c
-          sed -i "s/^#define PANVK_KBASE_RELEASE \".*\"/#define PANVK_KBASE_RELEASE \"${PANVK_RELEASE}\"/" "$f"
-          grep -q "^#define PANVK_KBASE_RELEASE \"${PANVK_RELEASE}\"" "$f"
-          sed -i 's/"PanVK-kbase " PANVK_KBASE_RELEASE/"PanVK G615 " PANVK_KBASE_RELEASE/' "$f"
-          grep -q '"PanVK G615 " PANVK_KBASE_RELEASE' "$f"
+          sed -i 's/^#define PANVK_KBASE_RELEASE ".*"/#define PANVK_KBASE_RELEASE "1.1.4-FC-Switch-Safety.1"/' "$f"
+          grep -q '^#define PANVK_KBASE_RELEASE "1.1.4-FC-Switch-Safety.1"' "$f"
 
-      - name: Generate Host Tools
+      - name: Compile Mesa host tools
         run: |
+          set -euxo pipefail
+          cd base
           meson setup build-host work/mesa \
-              -Dbuildtype=release \
-              -Db_ndebug=true \
-              -Dplatforms=[] \
-              -Dgallium-drivers=[] \
-              -Dvulkan-drivers=[] \
-              -Dtools=panfrost \
-              -Dprecomp-compiler=enabled \
-              -Dinstall-precomp-compiler=true \
-              -Dllvm=enabled \
-              -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+            -Dbuildtype=release -Db_ndebug=true '-Dplatforms=[]' \
+            '-Dgallium-drivers=[]' '-Dvulkan-drivers=[]' \
+            -Dtools=panfrost -Dprecomp-compiler=enabled \
+            -Dinstall-precomp-compiler=true -Dllvm=enabled \
+            -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+          ninja -C build-host src/compiler/clc/mesa_clc \
+            src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+          ln -sf "$PWD/build-host/src/compiler/clc/mesa_clc" "$PWD/build-host/src/compiler/clc/mesa-clc"
+          ln -sf "$PWD/build-host/src/compiler/spirv/vtn_bindgen2" "$PWD/build-host/src/compiler/spirv/vtn-bindgen2"
+          echo "$PWD/build-host/src/compiler/clc" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
 
-          ninja -C build-host src/compiler/clc/mesa_clc src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
-
-          ln -sf "$GITHUB_WORKSPACE/build-host/src/compiler/clc/mesa_clc" "$GITHUB_WORKSPACE/build-host/src/compiler/clc/mesa-clc"
-          ln -sf "$GITHUB_WORKSPACE/build-host/src/compiler/spirv/vtn_bindgen2" "$GITHUB_WORKSPACE/build-host/src/compiler/spirv/vtn-bindgen2"
-          echo "$GITHUB_WORKSPACE/build-host/src/compiler/clc" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/build-host/src/compiler/spirv" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/build-host/src/panfrost/clc" >> $GITHUB_PATH
-
-      - name: Configure Meson for PanVK G615
-        env:
-          PKG_CONFIG_LIBDIR: ${{ github.workspace }}/shims
+      - name: Build actual Bionic libdrm for Android ARM64
         run: |
+          set -euxo pipefail
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cp base/meson/android-aarch64.ini libdrm-android-cross.ini
+          # Pin real upstream libdrm sources, verified by SHA256.
+          curl -fL --retry 3 \
+            https://gitlab.freedesktop.org/mesa/drm/-/archive/libdrm-2.4.124/drm-libdrm-2.4.124.tar.gz \
+            -o libdrm-2.4.124.tar.gz
+          echo "543544aeadf0c8bea920d00f75e5dc2ff2ac3702e034651a11db40d3ec38becf  libdrm-2.4.124.tar.gz" | sha256sum -c -
+          mkdir -p libdrm-source
+          tar -xzf libdrm-2.4.124.tar.gz --strip-components=1 -C libdrm-source
+          meson setup libdrm-build libdrm-source \
+            --cross-file libdrm-android-cross.ini \
+            --prefix "$GITHUB_WORKSPACE/base/android-deps" \
+            --libdir lib -Ddefault_library=static -Dbuildtype=release \
+            -Dauto_features=disabled -Dtests=false -Dudev=false
+          meson compile -C libdrm-build -j 4
+          meson install -C libdrm-build
+          test -s base/android-deps/include/xf86drm.h
+          test -s base/android-deps/lib/libdrm.a
+          test -s base/android-deps/lib/pkgconfig/libdrm.pc
+          cat base/android-deps/lib/pkgconfig/libdrm.pc
+
+      - name: Configure Android AArch64 PanVK
+        run: |
+          set -euxo pipefail
+          cd base
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
-          export MESON_WORKING_DIR="$GITHUB_WORKSPACE"
-          CLANG_DIR="$(ls -d $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1)"
+          export MESON_WORKING_DIR="$PWD"
+          export PKG_CONFIG_LIBDIR="$GITHUB_WORKSPACE/base/android-deps/lib/pkgconfig:$GITHUB_WORKSPACE/base/shims"
+          CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
           if [ -z "$CLANG_DIR" ]; then
-            CLANG_DIR="$(ls -d $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1)"
+            CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
           fi
-          export CLANG_LIB_DIR="${CLANG_DIR:-$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/18/lib/linux/aarch64}"
-          echo "CLANG_LIB_DIR=$CLANG_LIB_DIR"
-          envsubst < android.toml > android-cross.txt
-          cat android-cross.txt
+          test -n "$CLANG_DIR"
+          export CLANG_LIB_DIR="$CLANG_DIR"
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          echo "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          cp meson/android-aarch64.ini android-cross.txt
+          meson setup build work/mesa --cross-file android-cross.txt \
+            -Dbuildtype=release -Db_ndebug=true -Dplatforms=android \
+            -Dandroid-stub=true -Dandroid-strict=false \
+            -Dandroid-libbacktrace=disabled -Dplatform-sdk-version=30 \
+            -Dglx=disabled -Dgbm=disabled -Degl=disabled \
+            -Dopengl=false -Dgles1=disabled -Dgles2=disabled \
+            -Dglvnd=disabled -Dvalgrind=disabled '-Dgallium-drivers=' \
+            -Dshared-glapi=disabled -Dzstd=disabled \
+            -Dmesa-clc=system -Dprecomp-compiler=system \
+            -Dvulkan-drivers=panfrost -Dllvm=disabled -Dpanfrost-kmds=kbase
 
-          PLATFORMS="android"
-          if [ "${{ matrix.flavor }}" = "x11" ]; then
-            PLATFORMS="android,x11"
-          fi
-
-          meson setup build work/mesa \
-              --cross-file android-cross.txt \
-              -Dbuildtype=release \
-              -Dplatforms=$PLATFORMS \
-              -Dandroid-stub=true \
-              -Dandroid-strict=false \
-              -Dandroid-libbacktrace=disabled \
-              -Dplatform-sdk-version=30 \
-              -Dglx=disabled \
-              -Dgbm=disabled \
-              -Degl=disabled \
-              -Dopengl=false \
-              -Dgles1=disabled \
-              -Dgles2=disabled \
-              -Dglvnd=disabled \
-              -Dvalgrind=disabled \
-              -Dgallium-drivers= \
-              -Dshared-glapi=disabled \
-              -Dzstd=disabled \
-              -Dmesa-clc=system \
-              -Dprecomp-compiler=system \
-              -Dvulkan-drivers=panfrost \
-              -Dllvm=disabled \
-              -Dpanfrost-kmds=kbase
-
-      - name: Compile PanVK Driver
+      - name: Build PanVK 1.1.4-FC with Switch Safety
         run: |
-          meson compile -C build
+          set -euxo pipefail
+          meson compile -C base/build -j 4
 
-      - name: Package Driver
+      - name: Package and verify Switch driver
         run: |
-          ./scripts/package-release-zip.sh --flavor "${{ matrix.flavor }}" --version "${PANVK_RELEASE}"
+          set -euxo pipefail
+          python3 base/scripts/package-switch-safety.py base/build/src/panfrost/vulkan/libvulkan_panfrost.so
 
-      - name: Upload Packaged Driver ZIP
+      - name: Upload Switch Safety package
         uses: actions/upload-artifact@v4
         with:
-          name: PanVK-G615-${{ matrix.flavor }}-release
+          name: PanVK-1.1.4-FC-LukeValen-Switch-Safety
           path: |
-            PanVK-G615-${{ env.PANVK_RELEASE }}-${{ matrix.flavor }}.zip
-            PanVK-G615-${{ env.PANVK_RELEASE }}-${{ matrix.flavor }}-MANIFEST.txt
+            PanVK-1.1.4-FC-LukeValen-Switch-Safety.zip
             SHA256SUMS.txt
-          if-no-files-found: error
-
-      - name: Upload Raw Driver Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: libvulkan_panfrost-g615-aarch64-${{ matrix.flavor }}
-          path: build/src/panfrost/vulkan/libvulkan_panfrost.so
           if-no-files-found: error
