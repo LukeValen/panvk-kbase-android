@@ -1,0 +1,142 @@
+name: Build PanVK 1.1.4-FC Switch Safety
+
+on:
+  push:
+    branches:
+      - switch-g615-1.1.4-fc-safety
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  valhall-strato:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - name: Checkout Switch Safety sources
+        uses: actions/checkout@v4
+        with:
+          path: base
+          fetch-depth: 0
+
+      - name: Verify pinned 1.1.4-FC base
+        run: |
+          set -euxo pipefail
+          git -C base merge-base --is-ancestor aa01eb0cd2d5e622ffbaa3a1e097857fe8ed8719 HEAD
+          python3 -c 'import json; a=json.load(open("base/sources.lock")); assert a["mesaCommit"]=="5a07217f034b3e50d8c7c7794f97a2df1742613b"'
+
+      - name: Install Mesa build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential llvm-20-dev libclang-20-dev libclc-20-dev \
+            libllvmspirvlib-20-dev libelf-dev spirv-tools bison flex \
+            libdrm-dev pkg-config gettext
+          python3 -m pip install --user --upgrade mako PyYAML meson ninja packaging
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Apply upstream 1.1.4-FC and Switch Safety patches
+        run: |
+          set -euxo pipefail
+          cd base
+          mkdir -p work/mesa
+          git -C work/mesa init
+          git -C work/mesa remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
+          ./scripts/fetch-mesa.sh
+          ./scripts/apply-patches.sh --profile g615-v11-csf --switch-safety
+          f=work/mesa/src/panfrost/vulkan/panvk_vX_physical_device.c
+          sed -i 's/^#define PANVK_KBASE_RELEASE ".*"/#define PANVK_KBASE_RELEASE "1.1.4-FC-Switch-Safety.1"/' "$f"
+          grep -q '^#define PANVK_KBASE_RELEASE "1.1.4-FC-Switch-Safety.1"' "$f"
+
+      - name: Compile Mesa host tools
+        run: |
+          set -euxo pipefail
+          cd base
+          meson setup build-host work/mesa \
+            -Dbuildtype=release -Db_ndebug=true '-Dplatforms=[]' \
+            '-Dgallium-drivers=[]' '-Dvulkan-drivers=[]' \
+            -Dtools=panfrost -Dprecomp-compiler=enabled \
+            -Dinstall-precomp-compiler=true -Dllvm=enabled \
+            -Dmesa-clc=enabled -Dinstall-mesa-clc=true
+          ninja -C build-host src/compiler/clc/mesa_clc \
+            src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
+          ln -sf "$PWD/build-host/src/compiler/clc/mesa_clc" "$PWD/build-host/src/compiler/clc/mesa-clc"
+          ln -sf "$PWD/build-host/src/compiler/spirv/vtn_bindgen2" "$PWD/build-host/src/compiler/spirv/vtn-bindgen2"
+          echo "$PWD/build-host/src/compiler/clc" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/compiler/spirv" >> "$GITHUB_PATH"
+          echo "$PWD/build-host/src/panfrost/clc" >> "$GITHUB_PATH"
+
+      - name: Build actual Bionic libdrm for Android ARM64
+        run: |
+          set -euxo pipefail
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cp base/meson/android-aarch64.ini libdrm-android-cross.ini
+          # Pin real upstream libdrm sources, verified by SHA256.
+          curl -fL --retry 3 \
+            https://gitlab.freedesktop.org/mesa/drm/-/archive/libdrm-2.4.124/drm-libdrm-2.4.124.tar.gz \
+            -o libdrm-2.4.124.tar.gz
+          echo "543544aeadf0c8bea920d00f75e5dc2ff2ac3702e034651a11db40d3ec38becf  libdrm-2.4.124.tar.gz" | sha256sum -c -
+          mkdir -p libdrm-source
+          tar -xzf libdrm-2.4.124.tar.gz --strip-components=1 -C libdrm-source
+          meson setup libdrm-build libdrm-source \
+            --cross-file libdrm-android-cross.ini \
+            --prefix "$GITHUB_WORKSPACE/base/android-deps" \
+            --libdir lib -Ddefault_library=static -Dbuildtype=release \
+            -Dauto_features=disabled -Dtests=false -Dudev=false
+          meson compile -C libdrm-build -j 4
+          meson install -C libdrm-build
+          test -s base/android-deps/include/xf86drm.h
+          test -s base/android-deps/lib/libdrm.a
+          test -s base/android-deps/lib/pkgconfig/libdrm.pc
+          cat base/android-deps/lib/pkgconfig/libdrm.pc
+
+      - name: Configure Android AArch64 PanVK
+        run: |
+          set -euxo pipefail
+          cd base
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export MESON_WORKING_DIR="$PWD"
+          export PKG_CONFIG_LIBDIR="$GITHUB_WORKSPACE/base/android-deps/lib/pkgconfig:$GITHUB_WORKSPACE/base/shims"
+          CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
+          if [ -z "$CLANG_DIR" ]; then
+            CLANG_DIR="$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/*/lib/linux/aarch64 2>/dev/null | tail -n1 || true)"
+          fi
+          test -n "$CLANG_DIR"
+          export CLANG_LIB_DIR="$CLANG_DIR"
+          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          echo "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          cp meson/android-aarch64.ini android-cross.txt
+          meson setup build work/mesa --cross-file android-cross.txt \
+            -Dbuildtype=release -Db_ndebug=true -Dplatforms=android \
+            -Dandroid-stub=true -Dandroid-strict=false \
+            -Dandroid-libbacktrace=disabled -Dplatform-sdk-version=30 \
+            -Dglx=disabled -Dgbm=disabled -Degl=disabled \
+            -Dopengl=false -Dgles1=disabled -Dgles2=disabled \
+            -Dglvnd=disabled -Dvalgrind=disabled '-Dgallium-drivers=' \
+            -Dshared-glapi=disabled -Dzstd=disabled \
+            -Dmesa-clc=system -Dprecomp-compiler=system \
+            -Dvulkan-drivers=panfrost -Dllvm=disabled -Dpanfrost-kmds=kbase
+
+      - name: Build PanVK 1.1.4-FC with Switch Safety
+        run: |
+          set -euxo pipefail
+          meson compile -C base/build -j 4
+
+      - name: Package and verify Switch driver
+        run: |
+          set -euxo pipefail
+          python3 base/scripts/package-switch-safety.py base/build/src/panfrost/vulkan/libvulkan_panfrost.so
+
+      - name: Upload Switch Safety package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanVK-1.1.4-FC-LukeValen-Switch-Safety
+          path: |
+            PanVK-1.1.4-FC-LukeValen-Switch-Safety.zip
+            SHA256SUMS.txt
+          if-no-files-found: error

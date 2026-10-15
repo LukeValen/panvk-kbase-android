@@ -1,5 +1,8 @@
 name: build
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore: [ "switch-g615-1.1.4-fc-safety" ]
+  pull_request:
 jobs:
   build:
     runs-on: ubuntu-latest

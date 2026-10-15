@@ -2,7 +2,7 @@ name: Build PanVK Mali-G615 Driver
 
 on:
   push:
-    branches: [ "**" ]
+    branches-ignore: [ "switch-g615-1.1.4-fc-safety" ]
   pull_request:
     branches: [ "**" ]
   workflow_dispatch:

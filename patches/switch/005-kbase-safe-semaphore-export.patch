@@ -1,0 +1,33 @@
+--- a/src/vulkan/runtime/vk_semaphore.c
++++ b/src/vulkan/runtime/vk_semaphore.c
+@@ -681,9 +681,27 @@
+             return result;
+       }
+ 
+-      result = vk_sync_export_sync_file(device, sync, pFd);
+-      if (unlikely(result != VK_SUCCESS))
+-         return result;
++#ifdef HAVE_PAN_KMOD_KBASE
++      /* Switch Safety: Kbase has no DRM handle-to-fd ioctl. Complete the
++       * submitted signal before returning an already-signaled SYNC_FD.
++       * Wait only this payload: DeviceWaitIdle can wait on unrelated queues
++       * whose work depends on the caller completing this export first.
++       * Keep the normal permanent reset and temporary payload restoration.
++       */
++      if (device->physical->properties.driverID == VK_DRIVER_ID_MESA_PANVK &&
++          device->copy_sync_payloads == NULL) {
++         result = vk_sync_wait(device, sync, 0, VK_SYNC_WAIT_COMPLETE,
++                               UINT64_MAX);
++         if (unlikely(result != VK_SUCCESS))
++            return result;
++         *pFd = -1;
++      } else
++#endif
++      {
++         result = vk_sync_export_sync_file(device, sync, pFd);
++         if (unlikely(result != VK_SUCCESS))
++            return result;
++      }
+ 
+       /* From the Vulkan 1.2.194 spec:
+        *

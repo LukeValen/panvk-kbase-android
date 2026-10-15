@@ -3,10 +3,12 @@
 # Usage: ./scripts/apply-patches.sh --profile g615-v11-csf [--mesa work/mesa]
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SWITCH_SAFETY=0
 PROFILE=""; MESA="$ROOT/work/mesa"
 while [ $# -gt 0 ]; do case "$1" in
   --profile) PROFILE="$2"; shift 2;;
   --mesa) MESA="$2"; shift 2;;
+  --switch-safety) SWITCH_SAFETY=1; shift;;
   *) echo "unknown arg $1" >&2; exit 2;;
 esac; done
 [ -n "$PROFILE" ] || { echo "--profile required" >&2; exit 2; }
@@ -16,6 +18,10 @@ SERIES="common android kbase-common app-loader wsi"
 if [ "$FRONTEND" = "CSF" ]; then SERIES="$SERIES csf csf-v$ARCH"; else SERIES="$SERIES jm-v$ARCH"; fi
 # Universal ICD: jm-v9 sits on top of the csf-v11 series (v9 JM + v10-v14 CSF).
 if [ "$PROFILE" = "g615-v11-csf" ]; then SERIES="$SERIES jm-v9"; fi
+if [ "$SWITCH_SAFETY" = 1 ]; then
+  [ "$PROFILE" = "g615-v11-csf" ] || { echo "Switch safety requires g615-v11-csf" >&2; exit 2; }
+  SERIES="$SERIES switch"
+fi
 echo "profile=$PROFILE arch=$ARCH frontend=$FRONTEND series: $SERIES"
 git -C "$MESA" status --porcelain | head -n 5
 APPLIED=0
@@ -39,3 +45,7 @@ for fam in $SERIES; do
   fi
 done
 echo "OK applied=$APPLIED profile=$PROFILE"
+
+if [ "$SWITCH_SAFETY" = 1 ]; then
+  python3 "$ROOT/scripts/verify-switch-safety.py" "$MESA"
+fi

@@ -1,0 +1,44 @@
+--- a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+@@ -2865,7 +2865,7 @@
+  * includes the waited-for targets, so an empty submit still signals after
+  * its waits.  PANVK_KBASE_GPU_SEMAPHORE_WAITS=0 restores the CPU waits. */
+ DEBUG_GET_ONCE_BOOL_OPTION(kbase_gpu_semaphore_waits,
+-                           "PANVK_KBASE_GPU_SEMAPHORE_WAITS", true)
++                           "PANVK_KBASE_GPU_SEMAPHORE_WAITS", false)
+ 
+ static bool
+ kbase_gpu_waits_disabled(void)
+--- a/src/panfrost/vulkan/csf/panvk_vX_cmd_buffer.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_cmd_buffer.c
+@@ -591,7 +591,7 @@
+    static int64_t last_check;
+    static bool on;
+    if (enabled < 0) {
+-      enabled = debug_get_bool_option("PANVK_LAZY_VTWAIT", true);
++      enabled = debug_get_bool_option("PANVK_LAZY_VTWAIT", false);
+       toggle = debug_get_option("PANVK_LAZY_VTWAIT_FILE", "");
+    }
+    if (!toggle[0])
+--- a/src/panfrost/vulkan/csf/panvk_vX_cmd_buffer.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_cmd_buffer.c
+@@ -612,7 +612,7 @@
+    static int64_t last_check;
+    static bool on;
+    if (enabled < 0) {
+-      enabled = debug_get_bool_option("PANVK_LAZY_CWAIT", true);
++      enabled = debug_get_bool_option("PANVK_LAZY_CWAIT", false);
+       toggle = debug_get_option("PANVK_LAZY_CWAIT_FILE", "");
+    }
+    if (!toggle[0])
+--- a/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
+@@ -283,7 +283,7 @@
+ {
+    static int enabled = -1;
+    if (enabled < 0)
+-      enabled = debug_get_bool_option("PANVK_RP_MERGE", true);
++      enabled = debug_get_bool_option("PANVK_RP_MERGE", false);
+ 
+    /* Debug: PANVK_RP_MERGE_FILE=<path> toggles merging at runtime: on while
+     * the file exists (checked once a second), for same-scene A/B runs. */
